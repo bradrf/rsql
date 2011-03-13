@@ -1,0 +1,18 @@
+* Support separation of semicolon content from registered sql.
+
+* Fix multiline dump to be columnar sensitive (i.e. all but the first
+  line will need a prefix of previous column length whitespace.
+
+* Add query to each new database seen to gather all table names and
+  add them to the tab-complete list by tracking the table names in a
+  database table hash.
+
+* Add option to allow registration to include an automatic displayer.
+
+* Add ability to save passwords in local OS password storage.
+
+* Add ability to highlight lines (e.g. to indicate warning lines about
+  some data like LastHeartbeatTime not recent).
+
+* Add ability to take an array for the arguments so that the sql uses
+  an "IN" clause instead of just selecting one.
