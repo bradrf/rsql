@@ -20,6 +20,10 @@
 
 module RSQL
 
+    require 'stringio'
+
+    EvalResults = Struct.new(:value, :stdout)
+
     MySQLResults = Struct.new(:fields, :table)
     class MySQLResults
         def each_hash(&block)
@@ -36,7 +40,7 @@ module RSQL
     #
     class Commands
 
-        Command = Struct.new(:content, :is_ruby, :displayer)
+        Command = Struct.new(:content, :bangs, :is_ruby, :displayer)
 
         def self.mysql; @@mysql; end
         def self.mysql=(conn); @@mysql = conn; end
@@ -56,28 +60,14 @@ module RSQL
 
         ########################################
 
-#     if cmds.last[0] == ?!
-#         # if the last command starts with a bang we want to allow
-#         # their code to post-process column values during display--
-#         # notice that this may preceed their own redirection command
-# 
-#         # ! column => ruby [, column => ruby ...]
-#         cmd = cmds.pop
-#         cmd.slice!(0)
-#         cmd.strip!
-# 
-#         cmd.split(/\s*,\s*/).each do |ent|
-#             (key,val) = ent.split(/\s*=>\s*/)
-#             bangs[key] = val.to_sym
-#         end
-#     end
-
         # split on separators, allowing for escaping
         #
-        SEPARATORS = ';|'
+        SEPARATORS = ';|!'
         def initialize(input)
             @cmds = []
             esc = ''
+            bangs = {}
+            match_before_bang = nil
             next_is_ruby = false
 
             input.scan(/[^#{SEPARATORS}]+.?/) do |match|
@@ -100,12 +90,27 @@ module RSQL
                     esc = ''
                 end
 
-                add_command(match, next_is_ruby, sep)
+                if match_before_bang
+                    match.split(/\s*,\s*/).each do |ent|
+                        (key,val) = ent.split(/\s*=>\s*/)
+                        bangs[key.strip] = val.to_sym
+                    end
+                    match = match_before_bang
+                    match_before_bang = nil
+                end
 
+                if sep == ?!
+                    match_before_bang = match
+                    next
+                end
+
+                add_command(match, bangs, next_is_ruby, sep)
+
+                bangs = {}
                 next_is_ruby = sep == ?|
             end
 
-            add_command(esc, next_is_ruby)
+            add_command(esc, bangs, next_is_ruby)
         end
 
         attr_reader :mysql_database_name
@@ -123,9 +128,15 @@ module RSQL
 
                 if cmd.displayer == :pipe
                     last_results = results
-                elsif results
+                elsif MySQLResults === results
                     last_results = nil
                     method(cmd.displayer).call(results)
+                elsif EvalResults === results
+                    last_results = nil
+                    if results.stdout && 0 < results.stdout.size
+                        puts results.stdout.string
+                    end
+                    puts "=> #{results.value}" if results.value
                 end
             end
         end
@@ -133,9 +144,8 @@ module RSQL
         ########################################
         private
         
-            def add_command(content, is_ruby, separator=nil)
+            def add_command(content, bangs, is_ruby, separator=nil)
                 content.strip!
-
                 if content[0] == ?.
                     content.slice!(0)
                     is_ruby = true
@@ -152,7 +162,7 @@ module RSQL
                 end
 
                 if content.any?
-                    @cmds << Command.new(content, is_ruby, displayer)
+                    @cmds << Command.new(content, bangs, is_ruby, displayer)
                     return true
                 end
 
@@ -160,10 +170,11 @@ module RSQL
             end
 
             def run_command(cmd, last_results)
-                @@eval_context.bangs = {}
+                @@eval_context.bangs = cmd.bangs
 
                 if cmd.is_ruby
-                    value = @@eval_context.safe_eval(cmd.content, last_results)
+                    stdout = cmd.displayer == :pipe ? StringIO.new : nil
+                    value = @@eval_context.safe_eval(cmd.content, last_results, stdout)
                 else
                     value = cmd.content
                 end
@@ -171,13 +182,13 @@ module RSQL
                 return :done if value == 'exit' || value == 'quit'
 
                 if String === value
-                    value = mysql_eval(value)
+                    return mysql_eval(value, @@eval_context.bangs)
                 end
 
-                return value
+                return EvalResults.new(value, stdout)
             end
 
-            def mysql_eval(content)
+            def mysql_eval(content, bangs)
                 if content.match(/use\s+(\S+)/)
                     @mysql_database_name = $1
                 end
@@ -188,7 +199,9 @@ module RSQL
                     $stderr.puts(ex.message)
                 end
 
-                return process_results(results, @@eval_context.bangs)
+                bangs.merge!(@@eval_context.bangs)
+
+                return process_results(results, bangs)
             end
 
             # extract mysql results into our own table so we can predetermine the
@@ -197,7 +210,7 @@ module RSQL
             #
             HEX_RANGE = (Mysql::Field::TYPE_TINY_BLOB..Mysql::Field::TYPE_STRING)
             def process_results(results, bangs, max_rows=@@max_rows)
-                return nil unless 0 < results.num_rows
+                return nil unless results && 0 < results.num_rows
 
                 if max_rows < results.num_rows
                     $stderr.puts "refusing to process this much data: #{results.num_rows} rows"

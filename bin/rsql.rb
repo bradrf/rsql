@@ -35,14 +35,19 @@ require 'mysql'
 require 'net/ssh'
 
 # allow ourselves to be run from within a source tree
-libdir = File.join(File.dirname(__FILE__),'..','lib')
+if File.symlink?(__FILE__)
+    fn = File.readlink(__FILE__)
+else
+    fn = __FILE__
+end
+libdir = File.join(File.dirname(fn),'..','lib')
 $: << libdir if File.directory?(libdir)
 
 require 'rsql/eval_context'
 require 'rsql/commands'
 include RSQL
 
-ver = '0.1'
+ver = '0.2'
 
 bn = File.basename($0, '.rb')
 

@@ -57,7 +57,7 @@ module RSQL
         end
 
         def load(fn)
-            Thread.new{ eval '$SAFE=2;' + IO.read(fn) }.join
+            Thread.new{ eval(File.read(fn)) }.join
             @loaded_fns << fn unless @loaded_fns.include?(fn)
         rescue Exception => ex
             $stderr.puts("Loading #{fn} failed: #{ex.message}:", ex.backtrace.first)
@@ -88,7 +88,7 @@ module RSQL
 
         # safely evaluate Ruby content within our context
         #
-        def safe_eval(content, last_results=nil)
+        def safe_eval(content, last_results=nil, stdout=nil)
             @last_results = last_results
 
             # allow a simple reload to be called directly as it requires a
@@ -98,13 +98,21 @@ module RSQL
                 return
             end
 
+            if stdout
+                # capture stdout
+                orig_stdout = $stdout
+                $stdout = stdout
+            end
+
             begin
                 value = Thread.new{ eval('$SAFE=3;' + content) }.value
             rescue Exception => ex
                 $stderr.puts(ex.message, ex.backtrace.first)
+            ensure
+                $stdout = orig_stdout if stdout
             end
 
-            @last_command = value
+            @last_cmd = value if String === value
 
             return value
         end
