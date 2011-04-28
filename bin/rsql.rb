@@ -1,6 +1,6 @@
 #!/usr/bin/env ruby
 
-# Copyright (C) 2011 by brad+rsql@gigglewax.com
+# Copyright (C) 2011 by Brad Robel-Forrest <brad+rsql@gigglewax.com>
 # 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -31,7 +31,6 @@ require 'thread'
 require 'timeout'
 require 'readline'
 require 'yaml'
-require 'mysql'
 require 'net/ssh'
 
 # allow ourselves to be run from within a source tree
@@ -40,18 +39,19 @@ if File.symlink?(__FILE__)
 else
     fn = __FILE__
 end
-libdir = File.join(File.dirname(fn),'..','lib')
+libdir = File.expand_path(File.join(File.dirname(fn),'..','lib'))
 $: << libdir if File.directory?(libdir)
 
+require 'rsql/mysql_results'
 require 'rsql/eval_context'
 require 'rsql/commands'
 include RSQL
 
-ver = '0.2'
+ver = '1.0'
 
 bn = File.basename($0, '.rb')
 
-Commands.eval_context = EvalContext.new
+eval_context = EvalContext.new
 
 if i = ARGV.index('-rc')
     ARGV.delete_at(i)
@@ -60,7 +60,7 @@ else
     rc_fn = File.join(ENV['HOME'], ".#{bn}rc")
 end
 
-Commands.eval_context.load(rc_fn) if File.exists?(rc_fn)
+eval_context.load(rc_fn) if File.exists?(rc_fn)
 
 ################################################################################
 # command line parsing
@@ -104,7 +104,7 @@ def split_login(str)
 end
 
 if i = ARGV.index('-help')
-    Commands.eval_context.help
+    eval_context.help
     exit
 end
 
@@ -115,13 +115,13 @@ end
 
 if i = ARGV.index('-maxrows')
     ARGV.delete_at(i)
-    Commands.max_rows = ARGV.delete_at(i).to_i
+    MySQLResults.max_rows = ARGV.delete_at(i).to_i
 end
 
 if i = ARGV.index('-sep')
     ARGV.delete_at(i)
-    Commands.field_separator = ARGV.delete_at(i)
-    Commands.field_separator = "\t" if Commands.field_separator == '\t'
+    MySQLResults.field_separator = ARGV.delete_at(i)
+    MySQLResults.field_separator = "\t" if MySQLResults.field_separator == '\t'
     user_separator = true
 end
 
@@ -139,7 +139,7 @@ if i = ARGV.index('-e')
             batch_input << ' ' << arg
         end
     end
-    Commands.field_separator = "\t" unless user_separator
+    MySQLResults.field_separator = "\t" unless user_separator
 end
 
 if ARGV.size < 1
@@ -195,7 +195,7 @@ def add_to_history(item)
     Readline::HISTORY.push(item)
 end
 
-Commands.max_rows ||= batch_input ? 1000 : 200
+MySQLResults.max_rows ||= batch_input ? 5000 : 1000
 
 ssh_enabled = false
 
@@ -239,7 +239,7 @@ end
 
 puts "MySQL #{mysql_user}@#{real_mysql_host}..." unless batch_input
 begin
-    Commands.mysql = Mysql.new(mysql_host, mysql_user, mysql_password, db_name, mysql_port)
+    MySQLResults.conn = Mysql.new(mysql_host, mysql_user, mysql_password, db_name, mysql_port)
 rescue Mysql::Error => ex
     if ex.message.include?('Client does not support authentication')
         $stderr.puts "failed to connect to #{mysql_host} mysql server: unknown credentials?"
@@ -250,19 +250,27 @@ rescue Mysql::Error => ex
 end
 
 shutdown = false
-cmd_started = false
+running  = false
 
 Signal.trap('INT') do
-    shutdown = true
-    if cmd_started
+    if running
+        $stderr.puts 'Interrupting MySQL query...'
         # stop the mysql command
-        Commands.mysql.close
-        mysql = nil
-        $stderr.puts 'Closed mysql connection while working on a command'
+        begin
+            Timeout.timeout(5) { MySQLResults.conn.close }
+        rescue Timeout::Error
+            $stderr.puts 'Timed out waiting to close MySQL connection'
+        rescue => ex
+            $stderr.puts(ex)
+        end
+        MySQLResults.conn = nil
     end
+
+    $stderr.puts 'Shutting down...'
+    shutdown = true
 end
 
-Commands.eval_context.call_init_registrations(Commands.mysql)
+eval_context.call_init_registrations(MySQLResults.conn)
 
 history_fn = File.join(ENV['HOME'], ".#{bn}_history")
 if File.exists?(history_fn) && 0 < File.size(history_fn)
@@ -272,10 +280,11 @@ end
 db_name = '<no database selected>' unless db_name
 prompt = bn + '> '
 
-Readline.completion_proc = Commands.eval_context.method(:complete)
+Readline.completion_proc = eval_context.method(:complete)
 
 while (!shutdown) do
     if batch_input
+        shutdown = true         # only run once
         input = batch_input
     else
         puts '',"[#{mysql_user}@#{ssh_host ? ssh_host : mysql_host}:#{db_name}]"
@@ -295,15 +304,22 @@ while (!shutdown) do
         next
     end
 
-    break if cmds.run! == :done
+    running = true
+    break if cmds.run!(eval_context) == :done
+    running = false
+
+    db_name = (MySQLResults.database_name || db_name)
 end
 
-unless Commands.mysql.nil?
+unless MySQLResults.conn.nil?
     begin
-        Commands.mysql.close
+        Timeout.timeout(10) { MySQLResults.conn.close }
+    rescue Timeout::Error
+        $stderr.puts 'Timed out waiting to close MySQL connection'
     rescue => ex
         $stderr.puts(ex)
     end
+    MySQLResults.conn = nil
 end
 
 sleep(0.3)
@@ -320,7 +336,7 @@ end
 
 if ssh_thread
     begin
-        Timeout.timeout(10) { ssh_thread.join }
+        Timeout.timeout(5) { ssh_thread.join }
     rescue Timeout::Error
         $stderr.puts 'Timed out waiting to close SSH connection'
     end

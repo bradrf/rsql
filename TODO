@@ -14,5 +14,11 @@
 * Add ability to highlight lines (e.g. to indicate warning lines about
   some data like LastHeartbeatTime not recent).
 
-* Add ability to take an array for the arguments so that the sql uses
-  an "IN" clause instead of just selecting one.
+* Add ability to allow for multi-line entry of data (e.g. to start a
+  command with period and then have a multiline ruby script pasted
+  in).
+
+* Add way to prevent this and just allow the raw string to be printed:
+  elsif HEX_RANGE.include?(field.type) && val =~ /[^[:print:]\s]/
+      val = @@eval_context.to_hexstr(val)
+  end

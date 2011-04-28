@@ -1,4 +1,4 @@
-# Copyright (C) 2011 by brad+rsql@gigglewax.com
+# Copyright (C) 2011 by Brad Robel-Forrest <brad+rsql@gigglewax.com>
 # 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -28,6 +28,8 @@ module RSQL
 
         Registration = Struct.new(:name, :args, :bangs, :block, :usage, :desc)
 
+        CommandContext = Struct.new(:index, :incomplete, :last_results, :state)
+
         HEXSTR_LIMIT = 32
 
         def initialize
@@ -39,10 +41,14 @@ module RSQL
             @bangs = {}
 
             @registrations = {
-                :reload => Registration.new('reload',[],{},method(:reload),'reload',
+                :reload => Registration.new('reload', [], {},
+                                            method(:reload),
+                                            'reload',
                                             'Reload the rsqlrc file.'),
-                :last_cmd => Registration.new('last_cmd',[],{},method(:show_last_cmd),
-                                              'last_cmd', 'Print the last command generated.'),
+                :last_cmd => Registration.new('last_cmd', [], {},
+                                              Proc.new{puts @last_cmd},
+                                              'last_cmd',
+                                              'Print the last command generated.'),
             }
         end
 
@@ -65,36 +71,36 @@ module RSQL
 
         def reload
             @loaded_fns.each{|fn| self.load(fn)}
+            puts "loaded: #{@loaded_fns.inspect}"
         end
 
-        def show_last_cmd
-            puts @last_cmd
-        end
-
-        def get_block(sym)
-            if reg = @registrations[sym]
-                return reg.block
+        def bang_eval(field, val)
+            if bang = @bangs[field]
+                begin
+                    val = Thread.new{ eval("$SAFE=3;#{bang}(val)") }.value
+                rescue Exception => ex
+                    $stderr.puts(ex.message, ex.backtrace.first)
+                end
             end
-            return nil
-        end
 
-        def bang_eval(bang, val)
-            begin
-                Thread.new{ eval("$SAFE=3;#{bang}(val)") }.value
-            rescue Exception => ex
-                $stderr.puts(ex.message, ex.backtrace.first)
-            end
+            return val
         end
 
         # safely evaluate Ruby content within our context
         #
-        def safe_eval(content, last_results=nil, stdout=nil)
-            @last_results = last_results
+        def safe_eval(content, context, stdout)
+            @command_context = context
 
             # allow a simple reload to be called directly as it requires a
             # little looser safety valve...
             if 'reload' == content
                 reload
+                return
+            end
+
+            # same relaxed call to load too
+            if m = /^\s*load\s+'(.+)'\s*$/.match(content)
+                self.load(m[1])
                 return
             end
 
@@ -162,7 +168,7 @@ module RSQL
                 '%02x' % ch[0]
             end
 
-            if limit && limit < 1
+            if limit && limit < 1 && 0 < cnt
                 str << "... (#{cnt} bytes hidden)"
             end
 
@@ -195,6 +201,13 @@ module RSQL
                 end
 
                 return nil
+            end
+
+            # provide a helper utility in the event a registered
+            # method would like to make it's own queries
+            #
+            def query(content)
+                MySQLResults.query(content, self)
             end
 
             # exactly like register below except in addition to registering as
@@ -245,8 +258,9 @@ module RSQL
                 if reg = @registrations[sym]
                     @bangs.merge!(reg.bangs)
                     final_args = reg.args + args
-                    final_args << @last_results if @last_results
                     reg.block.call(*final_args)
+                elsif MySQLResults.respond_to?(sym)
+                    MySQLResults.send(sym, *args)
                 else
                     super.method_missing(sym, *args, &block)
                 end
