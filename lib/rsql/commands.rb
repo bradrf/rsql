@@ -20,8 +20,6 @@
 
 module RSQL
 
-    VERSION = '1.1'
-
     require 'stringio'
 
     EvalResults = Struct.new(:value, :stdout)

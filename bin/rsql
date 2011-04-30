@@ -42,9 +42,7 @@ end
 libdir = File.expand_path(File.join(File.dirname(fn),'..','lib'))
 $: << libdir if File.directory?(libdir)
 
-require 'rsql/mysql_results'
-require 'rsql/eval_context'
-require 'rsql/commands'
+require 'rsql'
 include RSQL
 
 bn = File.basename($0, '.rb')

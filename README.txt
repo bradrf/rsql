@@ -1,4 +1,9 @@
-RSQL
+= rsql
+
+https://github.com/bradrf/rsql
+
+
+== DESCRIPTION
 
 This is an application to make working with a SQL command line more
 convenient by allowing interaction with Ruby in addition to embedding
@@ -11,7 +16,6 @@ functionality allows for a little more expressive processing.
 Multiple commands can be issued in one set by separation with
 semicolons.
 
-
 Generating SQL
 --------------
 
@@ -22,7 +26,6 @@ executed as SQL. Any semicolons meant to be processed by Ruby must be
 escaped. Example:
 
  rsql> . puts 'hello world!' \\; 'select * from Account'
-
 
 Utilizing Canned Methods
 ------------------------
@@ -59,7 +62,6 @@ command.
 Changes to a sourced file can be reloaded using the built-in 'reload'
 command.
 
-
 Processing Column Data
 ----------------------
 
@@ -78,7 +80,6 @@ also be utilized in a canned method. Example:
 
  register :all_ips, 'select IpAddress from Devices', 'IpAddress' => :bin_to_str
 
-
 Redirection
 -----------
 
@@ -90,3 +91,27 @@ access to them. Any result of the evaluation that is a string is then
 executed as SQL. Example:
 
  rsql> select * from Account; select * from Users; > $results.each {|r| p r}
+
+
+== LICENSE
+
+Copyright (C) 2011 by Brad Robel-Forrest <brad+rsql@gigglewax.com>
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
