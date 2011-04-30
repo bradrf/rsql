@@ -20,6 +20,8 @@
 
 module RSQL
 
+    VERSION = '1.1'
+
     require 'stringio'
 
     EvalResults = Struct.new(:value, :stdout)
@@ -64,12 +66,23 @@ module RSQL
                 end
 
                 if match_before_bang
+                    new_bangs = {}
                     match.split(/\s*,\s*/).each do |ent|
                         (key,val) = ent.split(/\s*=>\s*/)
-                        bangs[key.strip] = val.to_sym
+                        unless key && val
+                            # they are using a bang but have no maps
+                            # so we assume this is a != or something
+                            # similar and let it go through unmapped
+                            esc = match_before_bang + '!' + match
+                            match_before_bang = nil
+                            break
+                        end
+                        new_bangs[key.strip] = val.to_sym
                     end
+                    next unless match_before_bang
                     match = match_before_bang
                     match_before_bang = nil
+                    bangs.merge!(new_bangs)
                 end
 
                 if sep == ?!
@@ -107,7 +120,7 @@ module RSQL
                     if results.stdout && 0 < results.stdout.size
                         puts results.stdout.string
                     end
-                    puts "=> #{results.value}" if results.value
+                    puts "=> #{results.value.inspect}" if results.value
                 end
             end
         end

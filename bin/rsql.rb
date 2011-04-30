@@ -47,8 +47,6 @@ require 'rsql/eval_context'
 require 'rsql/commands'
 include RSQL
 
-ver = '1.0'
-
 bn = File.basename($0, '.rb')
 
 eval_context = EvalContext.new
@@ -61,9 +59,6 @@ else
 end
 
 eval_context.load(rc_fn) if File.exists?(rc_fn)
-
-################################################################################
-# command line parsing
 
 def get_password(prompt)
     iswin = nil != (RUBY_PLATFORM =~ /(win|w)32$/)
@@ -109,7 +104,7 @@ if i = ARGV.index('-help')
 end
 
 if i = ARGV.index('-version')
-    puts "#{bn} v#{ver}"
+    puts "#{bn} v#{RSQL::VERSION}"
     exit
 end
 
@@ -195,6 +190,19 @@ def add_to_history(item)
     Readline::HISTORY.push(item)
 end
 
+# try closing but wrapped with a timer so we don't hang forever
+#
+def safe_timeout(conn, meth, name)
+    Timeout.timeout(5) { conn.send(meth) }
+    true
+rescue Timeout::Error
+    $stderr.puts "Timed out waiting to close #{name} connection"
+    false
+rescue Exception => ex
+    $stderr.puts(ex)
+    false
+end
+
 MySQLResults.max_rows ||= batch_input ? 5000 : 1000
 
 ssh_enabled = false
@@ -229,7 +237,8 @@ if ssh_host
     end
 
     unless port_opened
-        $stderr.puts "failed to forward #{mysql_port}:#{mysql_host}:3306 via #{ssh_host} ssh host in 15 seconds"
+        $stderr.puts("failed to forward #{mysql_port}:#{mysql_host}:3306 via #{ssh_host} " \
+                     "ssh host in 15 seconds")
         exit 1
     end
 
@@ -253,19 +262,11 @@ shutdown = false
 running  = false
 
 Signal.trap('INT') do
-    if running
+    if running && MySQLResults.conn
         $stderr.puts 'Interrupting MySQL query...'
-        # stop the mysql command
-        begin
-            Timeout.timeout(5) { MySQLResults.conn.close }
-        rescue Timeout::Error
-            $stderr.puts 'Timed out waiting to close MySQL connection'
-        rescue => ex
-            $stderr.puts(ex)
-        end
+        safe_timeout(MySQLResults.conn, :close, 'MySQL')
         MySQLResults.conn = nil
     end
-
     $stderr.puts 'Shutting down...'
     shutdown = true
 end
@@ -277,9 +278,6 @@ if File.exists?(history_fn) && 0 < File.size(history_fn)
     YAML.load_file(history_fn).each {|i| Readline::HISTORY.push(i)}
 end
 
-db_name = '<no database selected>' unless db_name
-prompt = bn + '> '
-
 Readline.completion_proc = eval_context.method(:complete)
 
 while (!shutdown) do
@@ -287,8 +285,23 @@ while (!shutdown) do
         shutdown = true         # only run once
         input = batch_input
     else
-        puts '',"[#{mysql_user}@#{ssh_host ? ssh_host : mysql_host}:#{db_name}]"
-        input = batch_input || Readline.readline(prompt)
+        db_name = (MySQLResults.database_name || db_name)
+        puts '',"[#{mysql_user}@#{ssh_host||mysql_host}:#{db_name}]"
+        input = ''
+        prompt = bn + '> '
+        loop do
+            str = Readline.readline(prompt)
+            if str.nil?
+                input = nil if input.empty?
+                break
+            end
+            input << str
+            break if input =~ /[^\\];\s*/
+            # make sure we separate the lines with some whitespace if
+            # they didn't
+            input << ' ' unless str =~ /\s$/
+            prompt = ''
+        end
         if input.nil? || shutdown
             puts
             break
@@ -307,18 +320,10 @@ while (!shutdown) do
     running = true
     break if cmds.run!(eval_context) == :done
     running = false
-
-    db_name = (MySQLResults.database_name || db_name)
 end
 
 unless MySQLResults.conn.nil?
-    begin
-        Timeout.timeout(10) { MySQLResults.conn.close }
-    rescue Timeout::Error
-        $stderr.puts 'Timed out waiting to close MySQL connection'
-    rescue => ex
-        $stderr.puts(ex)
-    end
+    safe_timeout(MySQLResults.conn, :close, 'MySQL')
     MySQLResults.conn = nil
 end
 
@@ -335,9 +340,5 @@ if Readline::HISTORY.any?
 end
 
 if ssh_thread
-    begin
-        Timeout.timeout(5) { ssh_thread.join }
-    rescue Timeout::Error
-        $stderr.puts 'Timed out waiting to close SSH connection'
-    end
+    safe_timeout(ssh_thread, :join, 'SSH')
 end

@@ -1,4 +1,4 @@
-7# Copyright (C) 2011 by Brad Robel-Forrest <brad+rsql@gigglewax.com>
+# Copyright (C) 2011 by Brad Robel-Forrest <brad+rsql@gigglewax.com>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -53,7 +53,70 @@ module RSQL
             def max_rows; @@max_rows; end
             def max_rows=(cnt); @@max_rows = cnt; end
 
+            # get the name of the current database in use
+            #
             def database_name; @@database_name; end
+
+            # get the list of databases available
+            #
+            def databases
+                @@databases ||= @@conn.list_dbs.sort if @@conn
+            end
+
+            # get the list of tables available (if a database is
+            # selected) at most once every ten seconds
+            #
+            @@last_table_list = Hash.new{|h,k| h[k] = [Time.at(0), []]}
+            def tables(database = nil)
+                now = Time.now
+                (last, tables) = @@last_table_list[database]
+                if last + 10 < now
+                    begin
+                        if @@conn
+                            if database && database != database_name
+                                tables = @@conn.list_tables("FROM #{database}").sort
+                            else
+                                tables = @@conn.list_tables.sort
+                            end
+                        end
+                    rescue Mysql::Error => ex
+                        tables = []
+                    end
+                    @@last_table_list[database] = [now, tables]
+                end
+                tables
+            end
+
+            # provide a list of tab completions given the prompted
+            # value
+            #
+            def complete(str)
+                return [] unless @@conn
+
+                # offer table names from a specific database
+                if str =~ /^([^.]+)\.(.*)$/
+                    db = $1
+                    tb = $2
+                    ret = tables(db).collect do |n|
+                        if n.downcase.start_with?(tb)
+                            "#{db}.#{n}"
+                        else
+                            nil
+                        end
+                    end
+                    ret.compact!
+                    return ret
+                end
+
+                ret = databases.select{|n| n != database_name && n.downcase.start_with?(str)}
+                if database_name
+                    # if we've selected a db then we want to offer
+                    # completions for other dbs as well as tables for
+                    # the currently selected db
+                    ret += tables.select{|n| n.downcase.start_with?(str)}
+                end
+                return ret
+            end
 
             # get results from a query
             #

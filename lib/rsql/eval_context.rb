@@ -41,6 +41,10 @@ module RSQL
             @bangs = {}
 
             @registrations = {
+                :version => Registration.new('version', [], {},
+                                             method(:version),
+                                             'version',
+                                             'RSQL version information.'),
                 :reload => Registration.new('reload', [], {},
                                             method(:reload),
                                             'reload',
@@ -63,10 +67,21 @@ module RSQL
         end
 
         def load(fn)
-            Thread.new{ eval(File.read(fn)) }.join
-            @loaded_fns << fn unless @loaded_fns.include?(fn)
-        rescue Exception => ex
-            $stderr.puts("Loading #{fn} failed: #{ex.message}:", ex.backtrace.first)
+            ret = Thread.new {
+                begin
+                    eval(File.read(fn), binding, fn)
+                    nil
+                rescue Exception => ex
+                    ex
+                end
+            }.value
+
+            if Exception === ret
+                bt = ret.backtrace.collect{|line| line.start_with?(fn) ? line : nil}.compact
+                $stderr.puts("#{ret.class}: #{ret.message}", bt, '')
+            else
+                @loaded_fns << fn unless @loaded_fns.include?(fn)
+            end
         end
 
         def reload
@@ -113,7 +128,7 @@ module RSQL
             begin
                 value = Thread.new{ eval('$SAFE=3;' + content) }.value
             rescue Exception => ex
-                $stderr.puts(ex.message, ex.backtrace.first)
+                $stderr.puts(ex.message.gsub(/\(eval\):\d+:/,''))
             ensure
                 $stdout = orig_stdout if stdout
             end
@@ -133,7 +148,8 @@ module RSQL
                 prefix = ''
             end
 
-            ret = @registrations.keys.sort_by{|sym|sym.to_s}.collect do |sym|
+            ret  = MySQLResults.complete(str)
+            ret += @registrations.keys.sort_by{|sym|sym.to_s}.collect do |sym|
                 name = sym.to_s
                 if name.start_with?(str)
                     prefix + name
@@ -201,6 +217,14 @@ module RSQL
                 end
 
                 return nil
+            end
+
+            # show all the pertinent version data we have about our
+            # software and the mysql connection
+            #
+            def version
+                puts "rsql:v#{RSQL::VERSION} client:v#{MySQLResults.conn.client_info} " \
+                     "server:v#{MySQLResults.conn.server_info}"
             end
 
             # provide a helper utility in the event a registered

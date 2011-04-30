@@ -3,10 +3,6 @@
 * Fix multiline dump to be columnar sensitive (i.e. all but the first
   line will need a prefix of previous column length whitespace.
 
-* Add query to each new database seen to gather all table names and
-  add them to the tab-complete list by tracking the table names in a
-  database table hash.
-
 * Add option to allow registration to include an automatic displayer.
 
 * Add ability to save passwords in local OS password storage.
@@ -14,11 +10,9 @@
 * Add ability to highlight lines (e.g. to indicate warning lines about
   some data like LastHeartbeatTime not recent).
 
-* Add ability to allow for multi-line entry of data (e.g. to start a
-  command with period and then have a multiline ruby script pasted
-  in).
-
 * Add way to prevent this and just allow the raw string to be printed:
   elsif HEX_RANGE.include?(field.type) && val =~ /[^[:print:]\s]/
       val = @@eval_context.to_hexstr(val)
   end
+
+* Move the more common helpers into the eval_context.
