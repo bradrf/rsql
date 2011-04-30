@@ -2,13 +2,16 @@
 
 https://github.com/bradrf/rsql
 
-
 == DESCRIPTION
 
 This is an application to make working with a SQL command line more
 convenient by allowing interaction with Ruby in addition to embedding
 the common operation of using a SSH connection to an intermediary host
 for access to the SQL server.
+
+== SYNOPSIS
+
+See rsql -help for usage.
 
 Aside from the standard MySQL command syntax, the following
 functionality allows for a little more expressive processing.
@@ -35,7 +38,7 @@ expose methods that may be invoked to generate SQL with variable
 interpolation. Use of the 'register' helper is recommended for this
 approach. These can then be called in the same way as above. Example:
 
-In the .sqlrc file...
+In the .rsqlrc file...
 
  register :users_by_email, :email %q{
    SELECT * FROM Users WHERE email = '\#\{email\}'
@@ -91,7 +94,6 @@ access to them. Any result of the evaluation that is a string is then
 executed as SQL. Example:
 
  rsql> select * from Account; select * from Users; > $results.each {|r| p r}
-
 
 == LICENSE
 

@@ -20,8 +20,6 @@
 
 module RSQL
 
-    require 'mysql'
-
     ########################################
     # A wrapper to make it easier to work with MySQL results (and prettier)
     #

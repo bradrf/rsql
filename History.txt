@@ -1,6 +1,0 @@
-=== 1.1 / 2011-04-29
-
-* 1 First release
-
-  * First release as a Gem.
-
