@@ -123,9 +123,15 @@ module RSQL
                     @@database_name = $1
                 end
 
+                start   = Time.now.to_f
                 results = @@conn.query(content)
+                elapsed = Time.now.to_f - start.to_f
 
-                return nil unless results && 0 < results.num_rows
+                affected_rows = @@conn.affected_rows
+                unless results && 0 < results.num_rows
+                    return new(elapsed, affected_rows)
+                end
+
                 if max_rows < results.num_rows
                     raise MaxRowsException.new(results.num_rows, max_rows)
                 end
@@ -169,28 +175,52 @@ module RSQL
                     results_table << row
                 end
 
-                return new(fields, results_table)
+                return new(elapsed, affected_rows, fields, results_table)
             end
 
         end # class << self
 
         ########################################
 
-        def initialize(fields, table, field_separator=@@field_separator)
-            @fields = fields
-            @table  = table
+        def initialize(elapsed, affected_rows,
+                       fields=nil, table=nil, field_separator=@@field_separator)
+            @elapsed         = elapsed;
+            @affected_rows   = affected_rows;
+            @fields          = fields
+            @table           = table
             @field_separator = field_separator
+        end
+
+        # get the number of rows that were affected by the query
+        #
+        attr_reader :affected_rows
+
+        # determine if there are any results
+        #
+        def any?
+            !@table.nil?
+        end
+
+        # determine if there are no results
+        #
+        def empty?
+            @table.nil?
+        end
+
+        # get the number of rows available in the results
+        #
+        def num_rows
+            @table ? @table.size : 0
         end
 
         # get a row from the table hashed with the field names
         #
         def row_hash(index)
-            return nil unless @fields && @table
-
-            row = @table[index]
             hash = {}
-            @fields.each_with_index {|f,i| hash[f.name] = row[i]}
-
+            if @fields && @table
+                row = @table[index]
+                @fields.each_with_index {|f,i| hash[f.name] = row[i]}
+            end
             return hash
         end
 
@@ -198,58 +228,73 @@ module RSQL
         # names
         #
         def each_hash(&block)
-            @table.each do |row|
-                hash = {}
-                @fields.each_with_index {|f,i| hash[f.name] = row[i]}
-                yield(hash)
+            if @table
+                @table.each do |row|
+                    hash = {}
+                    @fields.each_with_index {|f,i| hash[f.name] = row[i]}
+                    yield(hash)
+                end
             end
         end
 
         # show a set of results in a decent fashion
         #
         def display_by_column(io=$stdout)
-            return unless @fields && @table
+            if @fields && @table
+                fmts = []
+                names = []
+                len = 0
+                @fields.each do |field|
+                    fmts << "%-#{field.longest_length}s"
+                    names << field.name
+                    len += field.longest_length
+                end
 
-            fmts = []
-            names = []
-            len = 0
-            @fields.each do |field|
-                fmts << "%-#{field.longest_length}s"
-                names << field.name
-                len += field.longest_length
+                fmt = fmts.join(@field_separator)
+                io.puts(fmt % names, '-' * (len + fmts.length))
+                @table.each{|row| io.puts(fmt % row)}
             end
-
-            fmt = fmts.join(@field_separator)
-            io.puts(fmt % names, '-' * (len + fmts.length))
-            @table.each{|row| io.puts(fmt % row)}
+            display_stats(io)
         end
 
         # show a set of results with a single character separation
         #
         def display_by_batch(io=$stdout)
-            return unless @fields && @table
-
-            fmt = (['%s'] * @fields.size).join(@field_separator)
-            io.puts fmt % @fields.collect{|f| f.name}
-            @table.each{|row| io.puts(fmt % row)}
+            if @fields && @table
+                fmt = (['%s'] * @fields.size).join(@field_separator)
+                io.puts fmt % @fields.collect{|f| f.name}
+                @table.each{|row| io.puts(fmt % row)}
+            end
+            display_stats(io)
         end
 
         # show a set of results line separated
         #
         def display_by_line(io=$stdout)
-            return unless @fields && @table
-
-            namelen = 0
-            @fields.each do |field|
-                namelen = field.name.length if namelen < field.name.length
-            end
-            namelen += 1
-
-            @table.each_with_index do |row, i|
-                io.puts("#{'*'*30} #{i+1}. row #{'*'*30}")
-                row.each_with_index do |val, vi|
-                    io.printf("%#{namelen}s #{val}#{$/}", @fields[vi].name + ':')
+            if @fields && @table
+                namelen = 0
+                @fields.each do |field|
+                    namelen = field.name.length if namelen < field.name.length
                 end
+                namelen += 1
+
+                @table.each_with_index do |row, i|
+                    io.puts("#{'*'*30} #{i+1}. row #{'*'*30}")
+                    row.each_with_index do |val, vi|
+                        io.printf("%#{namelen}s #{val}#{$/}", @fields[vi].name + ':')
+                    end
+                end
+            end
+            display_stats(io)
+        end
+
+        def display_stats(io=$stdout)
+            if @table
+                s = 1 == @table.size ? 'row' : 'rows'
+                io.puts("#{@table.size} #{s} in set (#{'%0.2'%@elapsed} sec)")
+            else
+                s = 1 == @affected_rows ? 'row' : 'rows'
+                io.puts("Query OK, #{@affected_rows} #{s} affected (#{'%0.2f'%@elapsed} sec)")
             end
         end
 

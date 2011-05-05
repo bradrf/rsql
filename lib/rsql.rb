@@ -1,5 +1,5 @@
 module RSQL
-    VERSION = '1.1'
+    VERSION = '0.1.2'
 
     require 'rsql/mysql'
     require 'rsql/mysql_results'

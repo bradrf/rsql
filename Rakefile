@@ -42,7 +42,7 @@ MYSQL_TGZ     = "ruby-mysql-#{MYSQL_VERSION}.tar.gz"
 
 file MYSQL_TGZ do |t|
     sh "wget -nv http://www.tmtm.org/en/ruby/mysql/#{t.name}"
-end    
+end
 
 file 'mysql.rb' => MYSQL_TGZ do |t|
     sh "tar --strip-components=1 -zxf #{MYSQL_TGZ} ruby-mysql-#{MYSQL_VERSION}/mysql.rb"

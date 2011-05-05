@@ -256,19 +256,6 @@ rescue Mysql::Error => ex
     exit 1
 end
 
-shutdown = false
-running  = false
-
-Signal.trap('INT') do
-    if running && MySQLResults.conn
-        $stderr.puts 'Interrupting MySQL query...'
-        safe_timeout(MySQLResults.conn, :close, 'MySQL')
-        MySQLResults.conn = nil
-    end
-    $stderr.puts 'Shutting down...'
-    shutdown = true
-end
-
 eval_context.call_init_registrations(MySQLResults.conn)
 
 history_fn = File.join(ENV['HOME'], ".#{bn}_history")
@@ -278,47 +265,65 @@ end
 
 Readline.completion_proc = eval_context.method(:complete)
 
-while (!shutdown) do
-    if batch_input
-        shutdown = true         # only run once
-        input = batch_input
-    else
-        db_name = (MySQLResults.database_name || db_name)
-        puts '',"[#{mysql_user}@#{ssh_host||mysql_host}:#{db_name}]"
-        input = ''
-        prompt = bn + '> '
-        loop do
-            str = Readline.readline(prompt)
-            if str.nil?
-                input = nil if input.empty?
+cmd_thread = Thread.new do
+    me = Thread.current
+    me[:shutdown] = false
+    until me[:shutdown] do
+        if batch_input
+            me[:shutdown] = true         # only run once
+            input = batch_input
+        else
+            db_name = (MySQLResults.database_name || db_name)
+            puts '',"[#{mysql_user}@#{ssh_host||mysql_host}:#{db_name}]"
+            input = ''
+            prompt = bn + '> '
+            loop do
+                str = Readline.readline(prompt)
+                if str.nil?
+                    input = nil if input.empty?
+                    break
+                end
+                input << str
+                break if input =~ /[^\\];\s*/
+                # make sure we separate the lines with some whitespace if
+                # they didn't
+                input << ' ' unless str =~ /\s$/
+                prompt = ''
+            end
+            if input.nil? || me[:shutdown]
+                puts
                 break
             end
-            input << str
-            break if input =~ /[^\\];\s*/
-            # make sure we separate the lines with some whitespace if
-            # they didn't
-            input << ' ' unless str =~ /\s$/
-            prompt = ''
+            input.strip!
+            next if input.empty?
         end
-        if input.nil? || shutdown
-            puts
-            break
+
+        add_to_history(input)
+        cmds = Commands.new(input)
+        if cmds.empty?
+            Readline::HISTORY.pop
+            next
         end
-        input.strip!
-        next if input.empty?
-    end
 
-    add_to_history(input)
-    cmds = Commands.new(input)
-    if cmds.empty?
-        Readline::HISTORY.pop
-        next
+        me[:running] = true
+        break if cmds.run!(eval_context) == :done
+        me[:running] = false
     end
-
-    running = true
-    break if cmds.run!(eval_context) == :done
-    running = false
 end
+
+Signal.trap('INT') do
+    if cmd_thread[:running] && MySQLResults.conn
+        $stderr.puts 'Interrupting MySQL query...'
+        safe_timeout(MySQLResults.conn, :close, 'MySQL')
+        MySQLResults.conn = nil
+    end
+    $stderr.puts 'Shutting down...'
+    cmd_thread[:shutdown] = true
+    sleep(0.3)
+    cmd_thread.kill
+end
+
+cmd_thread.join
 
 unless MySQLResults.conn.nil?
     safe_timeout(MySQLResults.conn, :close, 'MySQL')
