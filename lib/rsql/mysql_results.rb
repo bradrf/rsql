@@ -251,10 +251,13 @@ module RSQL
                 end
 
                 fmt = fmts.join(@field_separator)
-                io.puts(fmt % names, '-' * (len + fmts.length))
+                sep = '-' * (len + fmts.length)
+                io.puts(fmt % names, sep)
                 @table.each{|row| io.puts(fmt % row)}
+                display_stats(io, sep)
+            else
+                display_stats(io)
             end
-            display_stats(io)
         end
 
         # show a set of results with a single character separation
@@ -265,7 +268,6 @@ module RSQL
                 io.puts fmt % @fields.collect{|f| f.name}
                 @table.each{|row| io.puts(fmt % row)}
             end
-            display_stats(io)
         end
 
         # show a set of results line separated
@@ -288,13 +290,13 @@ module RSQL
             display_stats(io)
         end
 
-        def display_stats(io=$stdout)
+        def display_stats(io=$stdout, hdr='')
             if @table
                 s = 1 == @table.size ? 'row' : 'rows'
-                io.puts("#{@table.size} #{s} in set (#{'%0.2'%@elapsed} sec)")
+                io.puts(hdr, "#{@table.size} #{s} in set (#{'%0.2f'%@elapsed} sec)")
             else
                 s = 1 == @affected_rows ? 'row' : 'rows'
-                io.puts("Query OK, #{@affected_rows} #{s} affected (#{'%0.2f'%@elapsed} sec)")
+                io.puts(hdr, "Query OK, #{@affected_rows} #{s} affected (#{'%0.2f'%@elapsed} sec)")
             end
         end
 

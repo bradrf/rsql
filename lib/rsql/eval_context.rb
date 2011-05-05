@@ -53,6 +53,14 @@ module RSQL
                                               Proc.new{puts @last_cmd},
                                               'last_cmd',
                                               'Print the last command generated.'),
+                :set_max_rows => Registration.new('set_max_rows', [], {},
+                                                  Proc.new{|r| MySQLResults.max_rows = r},
+                                                  'set_max_rows',
+                                                  'Set the maximum number of rows to process.'),
+                :max_rows => Registration.new('max_rows', [], {},
+                                              Proc.new{MySQLResults.max_rows},
+                                              'max_rows',
+                                              'Get the maximum number of rows to process.'),
             }
         end
 
