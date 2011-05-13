@@ -1,15 +1,15 @@
 # Copyright (C) 2011 by Brad Robel-Forrest <brad+rsql@gigglewax.com>
-# 
+#
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
 # in the Software without restriction, including without limitation the rights
 # to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
-# 
+#
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the Software.
-# 
+#
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 # FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -100,7 +100,7 @@ module RSQL
         def bang_eval(field, val)
             if bang = @bangs[field]
                 begin
-                    val = Thread.new{ eval("$SAFE=3;#{bang}(val)") }.value
+                    val = Thread.new{ eval("$SAFE=2;#{bang}(val)") }.value
                 rescue Exception => ex
                     $stderr.puts(ex.message, ex.backtrace.first)
                 end
@@ -134,7 +134,7 @@ module RSQL
             end
 
             begin
-                value = Thread.new{ eval('$SAFE=3;' + content) }.value
+                value = Thread.new{ eval('$SAFE=2;' + content) }.value
             rescue Exception => ex
                 $stderr.puts(ex.message.gsub(/\(eval\):\d+:/,''))
             ensure
@@ -176,10 +176,9 @@ module RSQL
             @hexstr_limit = HEXSTR_LIMIT
         end
 
-        # convert a binary value into a hexadecimal string
+        # convert a binary string value into a hexadecimal string
         #
-        def to_hexstr(bin, prefix='0x')
-            limit = @hexstr_limit
+        def to_hexstr(bin, limit=@hexstr_limit, prefix='0x')
             cnt = 0
             str = prefix << bin.gsub(/./m) do |ch|
                 if limit
@@ -236,10 +235,10 @@ module RSQL
             end
 
             # provide a helper utility in the event a registered
-            # method would like to make it's own queries
+            # method would like to make its own queries
             #
-            def query(content)
-                MySQLResults.query(content, self)
+            def query(content, *args)
+                MySQLResults.query(content, self, *args)
             end
 
             # exactly like register below except in addition to registering as
@@ -268,10 +267,7 @@ module RSQL
                 desc = '' unless desc
 
                 if block.nil?
-                    sql = args.pop
-                    sql.gsub!(/\s+/,' ')
-                    sql.strip!
-                    sql << ';' unless sql[-1] == ?;
+                    sql = sqeeze!(args.pop)
 
                     argstr = args.join(',')
                     usage << "(#{argstr})" unless argstr.empty?
@@ -286,6 +282,121 @@ module RSQL
                 @registrations[sym] = Registration.new(name, args, bangs, block, usage, desc)
             end
 
+            # convert a collection of values into to hexadecimal strings
+            #
+            def hexify(*ids)
+                ids.collect do |id|
+                    case id
+                    when String
+                        if id.start_with?('0x')
+                            id
+                        else
+                            '0x' << id
+                        end
+                    when Integer
+                        '0x' << id.to_s(16)
+                    else
+                        raise "invalid id: #{id.class}"
+                    end
+                end.join(',')
+            end
+
+            # convert a number of bytes into a human readable string
+            #
+            def humanize_bytes(bytes)
+                abbrev = ['B','KB','MB','GB','TB','PB','EB','ZB','YB']
+                bytes = bytes.to_i
+                fmt = '%7.2f'
+
+                abbrev.each_with_index do |a,i|
+                    if bytes < (1024**(i+1))
+                        if i == 0
+                            return "#{fmt % bytes} B"
+                        else
+                            b = bytes / (1024.0**i)
+                            return "#{fmt % b} #{a}"
+                        end
+                    end
+                end
+
+                return bytes.to_s
+            end
+
+            # convert a human readable string of bytes into an integer
+            #
+            def dehumanize_bytes(str)
+                abbrev = ['B','KB','MB','GB','TB','PB','EB','ZB','YB']
+
+                if str =~ /(\d+(\.\d+)?)\s*(\w+)?/
+                    b = $1.to_f
+                    if $3
+                        i = abbrev.index($3.upcase)
+                        return (b * (1024**i)).round
+                    else
+                        return b.round
+                    end
+                end
+
+                raise "unable to parse '#{str}'"
+            end
+
+            # convert a time into a relative string from now
+            #
+            def relative_time(dt)
+                return dt unless String === dt
+
+                now = Time.now.utc
+                theirs = Time.parse(dt + ' UTC')
+                if theirs < now
+                    diff = now - theirs
+                    postfix = 'ago'
+                else
+                    diff = theirs - now
+                    postfix = 'from now'
+                end
+
+                fmt = '%3.0f'
+
+                [
+                 [31556926.0, 'years'],
+                 [2629743.83, 'months'],
+                 [86400.0,    'days'],
+                 [3600.0,     'hours'],
+                 [60.0,       'minutes']
+                ].each do |(limit, label)|
+                    if (limit * 1.5) < diff
+                        return "#{fmt % (diff / limit)} #{label} #{postfix}"
+                    end
+                end
+
+                return "#{fmt % diff} seconds #{postfix}"
+            end
+
+            # squeeze out any spaces
+            #
+            def sqeeze!(sql)
+                sql.gsub!(/\s+/,' ')
+                sql.strip!
+                sql << ';' unless sql[-1] == ?;
+                sql
+            end
+
+            # safely store an object into a file keeping at most one
+            # backup if the file already exists
+            #
+            def safe_save(obj, name)
+                name += '.yml' unless File.extname(name) == '.yml'
+                tn = "#{name}.tmp"
+                File.open(tn, 'w'){|f| YAML.dump(obj, f)}
+                if File.exist?(name)
+                    bn = "#{name}~"
+                    File.unlink(bn) if File.exist?(bn)
+                    File.rename(name, bn)
+                end
+                File.rename(tn, name)
+                puts "Saved: #{name}"
+            end
+
             def method_missing(sym, *args, &block)
                 if reg = @registrations[sym]
                     @bangs.merge!(reg.bangs)
@@ -298,6 +409,6 @@ module RSQL
                 end
             end
 
-    end
+    end # class EvalContext
 
 end # module RSQL

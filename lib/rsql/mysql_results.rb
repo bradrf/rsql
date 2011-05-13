@@ -118,18 +118,14 @@ module RSQL
 
             # get results from a query
             #
-            def query(content, eval_context, max_rows=@@max_rows)
-                if content.match(/use\s+(\S+)/)
-                    @@database_name = $1
-                end
-
+            def query(sql, eval_context, raw=false, max_rows=@@max_rows)
                 start   = Time.now.to_f
-                results = @@conn.query(content)
+                results = @@conn.query(sql)
                 elapsed = Time.now.to_f - start.to_f
 
                 affected_rows = @@conn.affected_rows
                 unless results && 0 < results.num_rows
-                    return new(elapsed, affected_rows)
+                    return new(sql, elapsed, affected_rows)
                 end
 
                 if max_rows < results.num_rows
@@ -153,12 +149,15 @@ module RSQL
                     row = []
                     fields.each_with_index do |field, i|
                         val = eval_context.bang_eval(field.name, vals[i])
-                        if val.nil?
-                            val = 'NULL'
-                        elsif HEX_RANGE.include?(field.type) && val =~ /[^[:print:]\s]/
-                            val = eval_context.to_hexstr(val)
+                        unless raw
+                            if val.nil?
+                                val = 'NULL'
+                            elsif HEX_RANGE.include?(field.type) && val =~ /[^[:print:]\s]/
+                                val = eval_context.to_hexstr(val)
+                            end
                         end
-                        if field.longest_length < val.length
+                        vlen = val.respond_to?(:length) ? val.length : 0
+                        if field.longest_length < vlen
                             if String === val
                                 # consider only the longest line length since some
                                 # output contains multiple lines like "show create table"
@@ -175,25 +174,34 @@ module RSQL
                     results_table << row
                 end
 
-                return new(elapsed, affected_rows, fields, results_table)
+                return new(sql, elapsed, affected_rows, fields, results_table)
             end
 
         end # class << self
 
         ########################################
 
-        def initialize(elapsed, affected_rows,
+        def initialize(sql, elapsed, affected_rows,
                        fields=nil, table=nil, field_separator=@@field_separator)
+            @sql             = sql;
             @elapsed         = elapsed;
             @affected_rows   = affected_rows;
             @fields          = fields
             @table           = table
             @field_separator = field_separator
+
+            # we set this here so that (a) it occurs _after_ we are
+            # successful and so we can show an appropriate messge in a
+            # displayer
+            if @sql.match(/use\s+(\S+)/)
+                @database_changed = true
+                @@database_name = $1
+            end
         end
 
         # get the number of rows that were affected by the query
         #
-        attr_reader :affected_rows
+        attr_reader :sql, :affected_rows
 
         # determine if there are any results
         #
@@ -265,7 +273,6 @@ module RSQL
         def display_by_batch(io=$stdout)
             if @fields && @table
                 fmt = (['%s'] * @fields.size).join(@field_separator)
-                io.puts fmt % @fields.collect{|f| f.name}
                 @table.each{|row| io.puts(fmt % row)}
             end
         end
@@ -292,11 +299,19 @@ module RSQL
 
         def display_stats(io=$stdout, hdr='')
             if @table
+                if @database_changed
+                    io.puts(hdr, "Database changed");
+                    hdr = ''
+                end
                 s = 1 == @table.size ? 'row' : 'rows'
                 io.puts(hdr, "#{@table.size} #{s} in set (#{'%0.2f'%@elapsed} sec)")
             else
-                s = 1 == @affected_rows ? 'row' : 'rows'
-                io.puts(hdr, "Query OK, #{@affected_rows} #{s} affected (#{'%0.2f'%@elapsed} sec)")
+                if @database_changed
+                    io.puts(hdr, "Database changed");
+                else
+                    s = 1 == @affected_rows ? 'row' : 'rows'
+                    io.puts(hdr, "Query OK, #{@affected_rows} #{s} affected (#{'%0.2f'%@elapsed} sec)")
+                end
             end
         end
 

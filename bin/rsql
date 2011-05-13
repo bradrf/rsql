@@ -1,17 +1,17 @@
 #!/usr/bin/env ruby
 
 # Copyright (C) 2011 by Brad Robel-Forrest <brad+rsql@gigglewax.com>
-# 
+#
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
 # in the Software without restriction, including without limitation the rights
 # to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
-# 
+#
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the Software.
-# 
+#
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 # FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -96,12 +96,12 @@ def split_login(str)
     end
 end
 
-if i = ARGV.index('-help')
+if ARGV.delete('-help')
     eval_context.help
     exit
 end
 
-if i = ARGV.index('-version')
+if ARGV.delete('-version')
     puts "#{bn} v#{RSQL::VERSION}"
     exit
 end
@@ -111,11 +111,11 @@ if i = ARGV.index('-maxrows')
     MySQLResults.max_rows = ARGV.delete_at(i).to_i
 end
 
-if i = ARGV.index('-sep')
+if i = ARGV.index('-batch')
     ARGV.delete_at(i)
     MySQLResults.field_separator = ARGV.delete_at(i)
     MySQLResults.field_separator = "\t" if MySQLResults.field_separator == '\t'
-    user_separator = true
+    batch_output = true
 end
 
 if i = ARGV.index('-ssh')
@@ -132,7 +132,7 @@ if i = ARGV.index('-e')
             batch_input << ' ' << arg
         end
     end
-    MySQLResults.field_separator = "\t" unless user_separator
+    batch_input.strip!
 end
 
 if ARGV.size < 1
@@ -140,7 +140,7 @@ if ARGV.size < 1
     $stderr.puts <<USAGE
 
 usage: #{bn} [-version] [-help]
-#{prefix}[-rc <rcfile>] [-maxrows <max>] [-sep <field_separator>]
+#{prefix}[-rc <rcfile>] [-maxrows <max>] [-batch <field_separator>]
 #{prefix}[-ssh [<ssh_user>[:<ssh_password>]@]<ssh_host>]
 #{prefix}[<mysql_user>[:<mysql_password>]@]<mysql_host>
 #{prefix}[<database>] [-e <remaining_args_as_input>]
@@ -201,7 +201,7 @@ rescue Exception => ex
     false
 end
 
-MySQLResults.max_rows ||= batch_input ? 5000 : 1000
+MySQLResults.max_rows ||= batch_output ? 5000 : 1000
 
 ssh_enabled = false
 
@@ -269,7 +269,9 @@ cmd_thread = Thread.new do
     me = Thread.current
     me[:shutdown] = false
     until me[:shutdown] do
+        default_displayer = :display_by_column
         if batch_input
+            default_displayer = :display_by_batch if batch_output
             me[:shutdown] = true         # only run once
             input = batch_input
         else
@@ -281,6 +283,10 @@ cmd_thread = Thread.new do
                 str = Readline.readline(prompt)
                 if str.nil?
                     input = nil if input.empty?
+                    break
+                end
+                if str =~ /^\s*(exit|quit)\s*$/
+                    me[:shutdown] = true
                     break
                 end
                 input << str
@@ -299,7 +305,7 @@ cmd_thread = Thread.new do
         end
 
         add_to_history(input)
-        cmds = Commands.new(input)
+        cmds = Commands.new(input, default_displayer)
         if cmds.empty?
             Readline::HISTORY.pop
             next
@@ -323,7 +329,11 @@ Signal.trap('INT') do
     cmd_thread.kill
 end
 
-cmd_thread.join
+begin
+    cmd_thread.join
+rescue Exception => ex
+    $stderr.puts ex.message, ex.backtrace
+end
 
 unless MySQLResults.conn.nil?
     safe_timeout(MySQLResults.conn, :close, 'MySQL')

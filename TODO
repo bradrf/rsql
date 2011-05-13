@@ -15,4 +15,16 @@
       val = @@eval_context.to_hexstr(val)
   end
 
-* Move the more common helpers into the eval_context.
+* Fix overlap of functionality between getting input in rsql and
+  parsing input in commands.rb (e.g. they both duplicate the concepts
+  of looking for exit/quit as well as what the end character(s) should
+  be)
+
+* Wrap calling of mysql query in a thread to make it interruptable
+  (might need to re-establish a connection if it's stopped but
+  expected a reply...look at the source).
+
+* Consider using mysql's ping to determine if we need to reconnect.
+
+* Move last_command logic into mysql_results and remember last five
+  (or so).

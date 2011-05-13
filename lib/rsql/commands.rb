@@ -1,15 +1,15 @@
 # Copyright (C) 2011 by Brad Robel-Forrest <brad+rsql@gigglewax.com>
-# 
+#
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
 # in the Software without restriction, including without limitation the rights
 # to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
-# 
+#
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the Software.
-# 
+#
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 # FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -36,11 +36,13 @@ module RSQL
         # split on separators, allowing for escaping
         #
         SEPARATORS = ';|!'
-        def initialize(input)
+        def initialize(input, default_displayer)
+            @default_displayer = default_displayer
             @cmds = []
             esc = ''
             bangs = {}
             match_before_bang = nil
+            in_pipe_arg = false
             next_is_ruby = false
 
             input.scan(/[^#{SEPARATORS}]+.?/) do |match|
@@ -88,6 +90,21 @@ module RSQL
                     next
                 end
 
+                if sep == ?|
+                    # we've split on a pipe so we need to handle the
+                    # case where ruby code is declaring a block with
+                    # arguments (e.g. {|x| p x} or do |x| p x end)
+                    if in_pipe_arg
+                        in_pipe_arg = false
+                        esc << match << '|'
+                        next
+                    elsif match =~ /\{\s*|do\s*/
+                        in_pipe_arg = true
+                        esc << match << '|'
+                        next
+                    end
+                end
+
                 add_command(match, bangs, next_is_ruby, sep)
 
                 bangs = {}
@@ -125,7 +142,7 @@ module RSQL
 
         ########################################
         private
-        
+
             def add_command(content, bangs, is_ruby, separator=nil)
                 content.strip!
 
@@ -147,7 +164,7 @@ module RSQL
                 elsif separator == ?|
                     displayer = :pipe
                 else
-                    displayer = :display_by_column
+                    displayer = @default_displayer
                 end
 
                 if content.any?
