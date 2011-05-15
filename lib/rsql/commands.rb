@@ -118,6 +118,14 @@ module RSQL
             return @cmds.empty?
         end
 
+        def concat(other)
+            @cmds.concat(other)
+        end
+
+        def last
+            @cmds.last
+        end
+
         def run!(eval_context)
             last_results = nil
             while @cmds.any?
@@ -150,9 +158,6 @@ module RSQL
                 when ?.
                     content.slice!(0)
                     declarator = :ruby
-                when ?@
-                    content.slice!(0)
-                    declarator = :iterator
                 else
                     declarator = is_ruby ? :ruby : nil
                 end
@@ -176,39 +181,42 @@ module RSQL
             end
 
             def run_command(cmd, last_results, eval_context)
-                ctx = EvalContext::CommandContext.new
+                eval_context.bangs = cmd.bangs
 
-                # set up to allow an iterator to run up to 100,000 times
-                100000.times do |i|
-                    eval_context.bangs = cmd.bangs
-
-                    if cmd.declarator
-                        ctx.index = i
-                        ctx.last_results = last_results
-                        stdout = cmd.displayer == :pipe ? StringIO.new : nil
-                        value = eval_context.safe_eval(cmd.content, ctx, stdout)
-                    else
-                        value = cmd.content
-                    end
-
-                    return :done if value == 'exit' || value == 'quit'
-
+                if cmd.declarator
+                    stdout = cmd.displayer == :pipe ? StringIO.new : nil
+                    value = eval_context.safe_eval(cmd.content, last_results, stdout)
                     if String === value
-                        begin
-                            last_results = MySQLResults.query(value, eval_context)
-                        rescue MySQLResults::MaxRowsException => ex
-                            $stderr.puts "refusing to process #{ex.rows} rows (max: #{ex.max})"
-                        rescue MysqlError => ex
-                            $stderr.puts ex.message
-                        rescue Exception => ex
-                            $stderr.puts ex.inspect
-                            raise
+                        cmds = Commands.new(value, @default_displayer)
+                        unless cmds.empty?
+                            # need to carry along the bangs into the
+                            # last command so we don't lose them
+                            if cmds.last.bangs.empty? && cmd.bangs.any?
+                                cmds.last.bangs = cmd.bangs
+                            end
+                            @cmds = cmds.concat(@cmds)
                         end
-                    else
-                        last_results = EvalResults.new(value, stdout)
+                        return
                     end
+                else
+                    value = cmd.content
+                end
 
-                    break unless ctx.incomplete
+                return :done if value == 'exit' || value == 'quit'
+
+                if String === value
+                    begin
+                        last_results = MySQLResults.query(value, eval_context)
+                    rescue MySQLResults::MaxRowsException => ex
+                        $stderr.puts "refusing to process #{ex.rows} rows (max: #{ex.max})"
+                    rescue MysqlError => ex
+                        $stderr.puts ex.message
+                    rescue Exception => ex
+                        $stderr.puts ex.inspect
+                        raise
+                    end
+                else
+                    last_results = EvalResults.new(value, stdout)
                 end
 
                 return last_results

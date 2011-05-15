@@ -56,7 +56,7 @@ else
     rc_fn = File.join(ENV['HOME'], ".#{bn}rc")
 end
 
-eval_context.load(rc_fn) if File.exists?(rc_fn)
+eval_context.load(rc_fn, false) if File.exists?(rc_fn)
 
 def get_password(prompt)
     iswin = nil != (RUBY_PLATFORM =~ /(win|w)32$/)
@@ -256,7 +256,7 @@ rescue Mysql::Error => ex
     exit 1
 end
 
-eval_context.call_init_registrations(MySQLResults.conn)
+eval_context.call_init_registrations
 
 history_fn = File.join(ENV['HOME'], ".#{bn}_history")
 if File.exists?(history_fn) && 0 < File.size(history_fn)

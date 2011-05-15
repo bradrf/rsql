@@ -28,13 +28,12 @@ module RSQL
 
         Registration = Struct.new(:name, :args, :bangs, :block, :usage, :desc)
 
-        CommandContext = Struct.new(:index, :incomplete, :last_results, :state)
-
         HEXSTR_LIMIT = 32
 
         def initialize
             @hexstr_limit = HEXSTR_LIMIT
             @last_cmd = nil
+            @results = nil
 
             @loaded_fns = []
             @init_registrations = []
@@ -66,15 +65,15 @@ module RSQL
 
         attr_accessor :bangs
 
-        def call_init_registrations(mysql)
+        def call_init_registrations
             @init_registrations.each do |sym|
                 reg = @registrations[sym]
                 sql = reg.block.call(*reg.args)
-                mysql.query(sql) if String === sql
+                query(sql) if String === sql
             end
         end
 
-        def load(fn)
+        def load(fn, init=true)
             ret = Thread.new {
                 begin
                     eval(File.read(fn), binding, fn)
@@ -89,11 +88,12 @@ module RSQL
                 $stderr.puts("#{ret.class}: #{ret.message}", bt, '')
             else
                 @loaded_fns << fn unless @loaded_fns.include?(fn)
+                call_init_registrations if init
             end
         end
 
         def reload
-            @loaded_fns.each{|fn| self.load(fn)}
+            @loaded_fns.each{|fn| self.load(fn, false)}
             puts "loaded: #{@loaded_fns.inspect}"
         end
 
@@ -111,8 +111,8 @@ module RSQL
 
         # safely evaluate Ruby content within our context
         #
-        def safe_eval(content, context, stdout)
-            @command_context = context
+        def safe_eval(content, results, stdout)
+            @results = results
 
             # allow a simple reload to be called directly as it requires a
             # little looser safety valve...

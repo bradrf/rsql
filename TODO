@@ -1,5 +1,3 @@
-* Support separation of semicolon content from registered sql.
-
 * Fix multiline dump to be columnar sensitive (i.e. all but the first
   line will need a prefix of previous column length whitespace.
 
@@ -28,3 +26,11 @@
 
 * Move last_command logic into mysql_results and remember last five
   (or so).
+
+* Fix need for SSH password! It never asks.
+
+* Find out if it's easy to point at source from the wiki to point
+  people at the example.rsqlrc.
+
+* Consider adding the option to specify a dispalyer when registering a
+  recipe.

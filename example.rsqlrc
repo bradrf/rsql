@@ -1,0 +1,148 @@
+# -*- Mode: ruby -*-
+
+# This file is meant to be a working illustration of how RSQL might be
+# used and to show off various features of the application.
+
+# All examples below will use this temporary table. You will need to
+# "use" a database first before loading this file since it will need
+# to create this temporary table.
+#
+@rsql_table = 'rsql_example'
+
+# To use this file, change directory to the one containing this file,
+# run rsql connecting to your MySQL server (run rsql with no arguments
+# for usage). At the RSQL prompt, type ".load 'example.rsqlrc';"
+# (without the double quotes).
+
+# After it's loaded try out the command ".list;" (without the
+# quotes).
+
+# If you make changes to the example to try out new things (and please
+# do!), you can simply enter ".reload;" (without the double quotes) to
+# have your changes pulled in immediately without exiting your
+# session.
+
+################################################################################
+
+# This type of registration is automatically invoked when this file is
+# loaded. Often, this is useful to run set up routines like setting
+# mysql variables for different read levels (e.g. SET SESSION
+# TRANSACTION ISOLATION LEVEL READ COMMITTED). Any number of these may
+# be defined.
+#
+# Here we are merely setting up the example table.
+#
+register_init :setup_example, %q{
+CREATE TEMPORARY TABLE IF NOT EXISTS #{@rsql_table} (
+  name VARCHAR(100),
+  value INT(11)
+)
+}, :desc => 'Sets up example table for trying out RSQL.'
+
+# This recipe is simply building up a string with a single variable
+# interpolated into it (our table name). The string will then be used
+# as if typed at the command line.
+#
+# In this case, we are simply dropping the table created by our
+# initialization recipe.
+#
+register :cleanup, %q{
+DROP TEMPORARY TABLE IF EXISTS #{@rsql_table}
+}, :desc => 'Cleans up the example table.'
+
+# This is an example of a recipe that utilizes a Ruby block for
+# running code to generate the SQL we eventually return.
+#
+# Here we are just populating the table (if it isn't already).
+#
+# Notice that we are also making use of one of EvalContext's helper
+# methods, "squeeze!" to make the SQL compact.
+#
+register :fill_table, :desc => 'Populate the example table.' do
+    sql = ''
+    10.times do |i|
+        sql << "
+INSERT IGNORE INTO #{@rsql_table}
+   SET  name='fancy#{i}',
+       value=#{i**i};
+"
+    end
+    sqeeze!(sql)
+end
+
+# After you have a table with content in it, you can run queries
+# against it and have the contents changed into something a little
+# more meaningful. For example, what if the values in our table were
+# bytes that we wanted to humanize? Try this command:
+#
+# rsql> select * from rsql_example ! value => humanize_bytes;
+#
+# The humanize_bytes method is a helper in the EvalContext
+# class. There are several others avaialble. Check out the rdoc for
+# details.
+#
+# You can also declare these column mappings in your recipes too,
+# though the syntax is slightly different, using Ruby symbols.
+#
+register :show_values_as_bytes, %q{
+SELECT value FROM #{@rsql_table}
+}, 'value' => :humanize_bytes,
+   :desc => 'Show values as humanized bytes.'
+
+# It is even possible to make up your own column mapping helpers. Just
+# create a Ruby method and reference it as a symbol mapped to whatever
+# column the helper is expecting for content. The return of the helper
+# will be replaced as the column entry's content. Your method is
+# called once for each value in the column from the results.
+#
+# Make sure if your method doesn't understand the content passed to it
+# that it just reflects it back out so you don't lose data when
+# printed.
+#
+def pretty_names(name)
+    if name =~ /^(\w+)(\d+)$/
+        "#{$1} (#{$2})"
+    else
+        name
+    end
+end
+
+register :show_pretty_names, %q{
+SELECT name FROM #{@rsql_table}
+}, 'name' => :pretty_names,
+   :desc => 'Show names separated to be more readable.'
+
+
+# It's also possible to work with the full set of query results in a
+# recipe. This can be useful if there is some coordination necessary
+# across multiple columns to result in some new kind of report. Much
+# like a shell's ability to pipe output from one command to the next,
+# RSQL takes a similar approch. Try this:
+#
+# rsql> select * from rsql_example | p @results;
+#
+# The EvalContext manages the results from a previous query in the
+# @results member variable accessible by any Ruby recipe code. This is
+# an instance of the MySQLResults class. Below we make use of the
+# each_hash method to walk over all rows. There are other helpful
+# routines available as well that are documented in rdoc.
+#
+# Here's an example that writes a simple report of the data we are
+# working with. To try this out, enter the following at the prompt:
+#
+# rsql> select * from rsql_example | to_report;
+#
+register :to_report do
+    small_cnt = 0
+    big_cnt   = 0
+    @results.each_hash do |row|
+        if row['value'].to_i < 10000
+            small_cnt +=1
+        else
+            big_cnt += 1
+        end
+    end
+    puts "There are #{small_cnt} small values and #{big_cnt} big values."
+end
+
+# vi: set filetype=ruby

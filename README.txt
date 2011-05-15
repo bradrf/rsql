@@ -11,7 +11,7 @@ for access to the SQL server.
 
 == SYNOPSIS
 
-See rsql -help for usage.
+Run rsql with no arguments for usage.
 
 Aside from the standard MySQL command syntax, the following
 functionality allows for a little more expressive processing.
@@ -28,10 +28,10 @@ final result of evaluating the command string is another string, it is
 executed as SQL. Any semicolons meant to be processed by Ruby must be
 escaped. Example:
 
- rsql> . puts 'hello world!' \\; 'select * from Account'
+ rsql> . puts 'hello world!' \; 'select * from Account';
 
-Utilizing Canned Methods
-------------------------
+Utilizing Canned Methods (aka "Recipes")
+----------------------------------------
 
 Commands can be stored in the .rsqlrc file in your HOME directory to
 expose methods that may be invoked to generate SQL with variable
@@ -41,23 +41,23 @@ approach. These can then be called in the same way as above. Example:
 In the .rsqlrc file...
 
  register :users_by_email, :email %q{
-   SELECT * FROM Users WHERE email = '\#\{email\}'
+   SELECT * FROM Users WHERE email = '#{email}'
  }
 
 ...then from the prompt:
 
- rsql> . users_by_email 'brad@gigglewax.com'
+ rsql> . users_by_email 'brad@gigglewax.com';
 
 If a block is provided to the registration, it will be called as a
 method. Example:
 
 In the .sqlrc file...
 
- register :dumby, :hello do |*args|
+ register :dummy, :hello do |*args|
    p args
  end
 
- rsql> . dumby :world
+ rsql> . dummy :world;
 
 All registered methods can be listed using the built-in 'list'
 command.
@@ -75,7 +75,7 @@ converting it into a more readable value. A bang indicator (exlamation
 point: !) is used to demarcate a mapping of column names to Ruby
 methods that should be invoked to processes content. Example:
 
- rsql> select IpAddress from Devices ; ! IpAddress => bin_to_str
+ rsql> select IpAddress from Devices ! IpAddress => bin_to_str;
 
 This will call 'bin_to_str' for each 'IpAddress' returned from the
 query. Mulitple mappings are separated by a comma. These mappings can
@@ -87,13 +87,24 @@ Redirection
 -----------
 
 Output from one or more queries may be post-processed dynamically. If
-any set of commands is follwed by a greater-than symbol, all results
-will be stored in a global $results array (with field information
-stored in $fields) and the final Ruby code will be evaluated with
-access to them. Any result of the evaluation that is a string is then
-executed as SQL. Example:
+any set of commands is follwed by a pipe symbol, results from the
+previous command will be available in a member variable as
+@results. The results can be used through any of the MySQLResults
+class' public methods (e.g. each_hash) and the final Ruby code will be
+evaluated with access to them. Any result of the evaluation that is a
+string is then executed as SQL. Example:
 
- rsql> select * from Account; select * from Users; > $results.each {|r| p r}
+ rsql> select * from Users | @results.each_hash{|r| p r};
+
+And again, it's most useful to encapsulate the processing logic within
+a registered ruby block that can be called after the pipe as a single
+command.
+
+Even More!
+----------
+
+For additional examples and functionality, read and try the
+example.rsqlrc file.
 
 == LICENSE
 

@@ -20,6 +20,7 @@ spec = Gem::Specification.new do |s|
     s.require_path = 'lib'
     s.files = `git ls-files`.split($/) << 'lib/rsql/mysql.rb'
     s.files.delete('Rakefile')
+    s.executables = 'rsql'
     s.homepage = 'https://github.com/bradrf/rsql'
     s.description = <<EOF
 Rsql makes working with a MySQL command line more convenient through
