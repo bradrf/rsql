@@ -11,22 +11,30 @@
 
 # To use this file, change directory to the one containing this file,
 # run rsql connecting to your MySQL server (run rsql with no arguments
-# for usage). At the RSQL prompt, type ".load 'example.rsqlrc';"
-# (without the double quotes).
+# for usage).
+#
+#   rsql> .load 'example.rsqlrc';
 
-# After it's loaded try out the command ".list;" (without the
-# quotes).
+# After it's loaded try listing out all the registered recipes (along
+# with parameter notes and descriptions).
+#
+#   rsql> .list;
 
 # If you make changes to the example to try out new things (and please
-# do!), you can simply enter ".reload;" (without the double quotes) to
-# have your changes pulled in immediately without exiting your
-# session.
+# do!), you can simply have the recipe file reloaded to have your
+# changes pulled in immediately without exiting your session.
+#
+#   rsql> .reload;
+
+# Notice that any command issued starting with a period (.) results in
+# evaluation of Ruby. Thus, any valid Ruby syntax is applicable
+# following a period on a command.
 
 ################################################################################
 
 # This type of registration is automatically invoked when this file is
 # loaded. Often, this is useful to run set up routines like setting
-# mysql variables for different read levels (e.g. SET SESSION
+# MySQL variables for different read levels (e.g. SET SESSION
 # TRANSACTION ISOLATION LEVEL READ COMMITTED). Any number of these may
 # be defined.
 #
@@ -35,7 +43,8 @@
 register_init :setup_example, %q{
 CREATE TEMPORARY TABLE IF NOT EXISTS #{@rsql_table} (
   name VARCHAR(100),
-  value INT(11)
+  value INT(11),
+  stuff BLOB
 )
 }, :desc => 'Sets up example table for trying out RSQL.'
 
@@ -43,10 +52,15 @@ CREATE TEMPORARY TABLE IF NOT EXISTS #{@rsql_table} (
 # interpolated into it (our table name). The string will then be used
 # as if typed at the command line.
 #
-# In this case, we are simply dropping the table created by our
-# initialization recipe.
+#   rsql> .cleanup_example;
 #
-register :cleanup, %q{
+# In this case, we are simply dropping the table created by our
+# initialization recipe. If you do this, you'll need to call the
+# setup_example initialization recipe again before moving on.
+#
+#   rsql> .setup_example;
+#
+register :cleanup_example, %q{
 DROP TEMPORARY TABLE IF EXISTS #{@rsql_table}
 }, :desc => 'Cleans up the example table.'
 
@@ -55,8 +69,10 @@ DROP TEMPORARY TABLE IF EXISTS #{@rsql_table}
 #
 # Here we are just populating the table (if it isn't already).
 #
-# Notice that we are also making use of one of EvalContext's helper
-# methods, "squeeze!" to make the SQL compact.
+#   rsql> .fill_table;
+#
+# Notice the use of hexify and squeeze! methods available from
+# EvalContext.
 #
 register :fill_table, :desc => 'Populate the example table.' do
     sql = ''
@@ -64,25 +80,65 @@ register :fill_table, :desc => 'Populate the example table.' do
         sql << "
 INSERT IGNORE INTO #{@rsql_table}
    SET  name='fancy#{i}',
-       value=#{i**i};
+       value=#{i**i},
+       stuff=#{hexify(rand((i+1)**100))};
 "
     end
     sqeeze!(sql)
 end
+
+# A very common reason for recipes is simply to add parameters to be
+# dropped in to our query. To facilitate this, simply declare one or
+# more variables immediately following the name of the recipe. Then
+# these values can be listed by embedded interpolation points into the
+# string (just as you would with any Ruby string).
+#
+# This call will simply return results only for those bigger than some
+# value passed in.
+#
+#   rsql> .get_big_values 80000;
+#
+register :get_big_values, :val, %q{
+SELECT name, value FROM #{@rsql_table} WHERE #{val} <= value
+}, :desc => 'Get values bigger than the one provided as an argument.'
+
+# Sometimes we make mistakes (never!). Normally, the command history
+# kept in RSQL only stores the last thing entered at the prompt--not
+# any query that the previous command may have generated and invoked.
+# When writing a recipe that generates a query that has an error
+# reported by MySQL, it is really handy to see the query.
+#
+# Here's an example of a recipe that will fail. Run it and then hit the
+# "up arrow" key to see the previous command.
+#
+#   rsql> .bad_query;
+#
+# So the command in our history is the recipe and not the query. To
+# see the query the EvalContext has a recipe ready for us:
+#
+#   rsql> .last_query;
+#
+register :bad_query, %q{
+SELECT name, value FROM #{@rsql_table} WHERE valu < 10000
+}, :desc => 'Make a query that will result in an error.'
 
 # After you have a table with content in it, you can run queries
 # against it and have the contents changed into something a little
 # more meaningful. For example, what if the values in our table were
 # bytes that we wanted to humanize? Try this command:
 #
-# rsql> select * from rsql_example ! value => humanize_bytes;
+#   rsql> select name, value from rsql_example ! value => humanize_bytes;
 #
 # The humanize_bytes method is a helper in the EvalContext
-# class. There are several others avaialble. Check out the rdoc for
+# class. There are several others available. Check out the rdoc for
 # details.
 #
-# You can also declare these column mappings in your recipes too,
-# though the syntax is slightly different, using Ruby symbols.
+# Additional mappings can be added, separated by commas.
+#
+# You can also declare these column mappings in your recipes, though
+# the syntax is slightly different, using Ruby symbols.
+#
+#   rsql> .show_values_as_bytes;
 #
 register :show_values_as_bytes, %q{
 SELECT value FROM #{@rsql_table}
@@ -95,13 +151,15 @@ SELECT value FROM #{@rsql_table}
 # will be replaced as the column entry's content. Your method is
 # called once for each value in the column from the results.
 #
+#   rsql> .show_pretty_names;
+#
 # Make sure if your method doesn't understand the content passed to it
 # that it just reflects it back out so you don't lose data when
 # printed.
 #
 def pretty_names(name)
-    if name =~ /^(\w+)(\d+)$/
-        "#{$1} (#{$2})"
+    if m = name.match(/^(\w+)(\d+)$/)
+        "#{m[1]} (#{m[2]})"
     else
         name
     end
@@ -112,14 +170,13 @@ SELECT name FROM #{@rsql_table}
 }, 'name' => :pretty_names,
    :desc => 'Show names separated to be more readable.'
 
-
 # It's also possible to work with the full set of query results in a
 # recipe. This can be useful if there is some coordination necessary
 # across multiple columns to result in some new kind of report. Much
 # like a shell's ability to pipe output from one command to the next,
-# RSQL takes a similar approch. Try this:
+# RSQL takes a similar approach. Try this:
 #
-# rsql> select * from rsql_example | p @results;
+#   rsql> select name, value from rsql_example | p @results;
 #
 # The EvalContext manages the results from a previous query in the
 # @results member variable accessible by any Ruby recipe code. This is
@@ -130,9 +187,9 @@ SELECT name FROM #{@rsql_table}
 # Here's an example that writes a simple report of the data we are
 # working with. To try this out, enter the following at the prompt:
 #
-# rsql> select * from rsql_example | to_report;
+#   rsql> select name, value from rsql_example | to_report;
 #
-register :to_report do
+register :to_report, :desc => 'Report on a count of small and big values.' do
     small_cnt = 0
     big_cnt   = 0
     @results.each_hash do |row|
@@ -144,5 +201,79 @@ register :to_report do
     end
     puts "There are #{small_cnt} small values and #{big_cnt} big values."
 end
+
+# There may be other moments where it's necessary to take arguments,
+# say if we want to process results and keep our data around in a
+# file.
+#
+#   rsql> select name, value from rsql_example | save_values 'myobj'
+#
+# After running this, a myobj.yml file should be created in the local
+# directory containing all the content from the query. To accomplish
+# this, the use of EvalContext's safe_save method is invoked which
+# serializes our object so that we may later decided to run some post
+# processing on the content.
+#
+register :save_values, :desc => 'Save results from a query into a file.' do |fn|
+    myobj = {}
+    @results.each_hash do |row|
+        myobj[row['name']] = row['value']
+    end
+    safe_save(myobj, fn)
+end
+
+# Dealing with variable arguments is pretty straightforward as well,
+# but with a little syntactic twist.
+#
+#   rsql> .find_names 'fancy3', 'fancy8'
+#
+# Here we simply expand the arguments.
+#
+register :find_names, :'*names', %q{
+SELECT name, value
+  FROM #{@rsql_table}
+ WHERE name IN (#{names.collect{|n| "'#{n}'"}.join(',')})
+}, :desc => 'Find names from example table.'
+
+# Sometimes it just isn't enough to be able to rely on generating SQL
+# queries and piping into handlers. Sometimes we just need to roll up
+# our sleeves and run queries directly so we can start processing
+# results and dealing with presentation all on our own. That's where
+# EvalContext's query helper comes in handy.
+#
+# The intention here is to just create a series of sentences out of
+# two separate queries.
+#
+#   rsql> .show_sentences;
+#
+register :show_sentences, :desc => 'Show results as sentences.' do
+    query("SELECT name FROM #{@rsql_table}").each_hash do |nrow|
+        name = nrow['name']
+        vals = query("SELECT value FROM #{@rsql_table} WHERE name='#{name}'")
+        puts "The #{name} has #{vals[0]['value']} fanciness levels."
+    end
+end
+
+# The MySQLResults class built in to RSQL handles binary content
+# gracefully, automatically converting it to something a little nicer
+# to our consoles than just dumping it. It converts it into a
+# hexadecimal string.
+#
+#   rsql> SELECT stuff FROM rsql_example
+#
+# The default is to limit the hex strings to 32 "bytes" reported. This
+# can be configured any time by setting the @hexstr_limit.
+#
+# RSQL makes querying for hex strings from within a recipe easy too.
+#
+#   rsql> .find_stuff 0x346950d3c051c8ac51092a3a2eff7503ef7f571c
+#
+register :find_stuff, :stuff, %q{
+SELECT * FROM #{@rsql_table} WHERE stuff=#{hexify stuff}
+}, :desc => 'Find some hex stuff.'
+
+# There are many other things to try out left as an "exercise for the
+# reader". Browsing the rdoc for EvalContext and MySQLResults would be
+# an excellent start.
 
 # vi: set filetype=ruby

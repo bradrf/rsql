@@ -1,3 +1,4 @@
+#--
 # Copyright (C) 2011 by Brad Robel-Forrest <brad+rsql@gigglewax.com>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -22,7 +23,7 @@ module RSQL
 
     ################################################################################
     # This class wraps all dynamic evaluation and serves as the reflection
-    # class for adding new methods dynamically.
+    # class for adding methods dynamically.
     #
     class EvalContext
 
@@ -32,8 +33,8 @@ module RSQL
 
         def initialize
             @hexstr_limit = HEXSTR_LIMIT
-            @last_cmd = nil
             @results = nil
+            @last_query = nil
 
             @loaded_fns = []
             @init_registrations = []
@@ -48,10 +49,10 @@ module RSQL
                                             method(:reload),
                                             'reload',
                                             'Reload the rsqlrc file.'),
-                :last_cmd => Registration.new('last_cmd', [], {},
-                                              Proc.new{puts @last_cmd},
-                                              'last_cmd',
-                                              'Print the last command generated.'),
+                :last_query => Registration.new('last_query', [], {},
+                                                Proc.new{puts(@last_query)},
+                                                'last_query',
+                                                'Print the last query made from generated results.'),
                 :set_max_rows => Registration.new('set_max_rows', [], {},
                                                   Proc.new{|r| MySQLResults.max_rows = r},
                                                   'set_max_rows',
@@ -109,7 +110,7 @@ module RSQL
             return val
         end
 
-        # safely evaluate Ruby content within our context
+        # Safely evaluate Ruby content within our context.
         #
         def safe_eval(content, results, stdout)
             @results = results
@@ -141,12 +142,12 @@ module RSQL
                 $stdout = orig_stdout if stdout
             end
 
-            @last_cmd = value if String === value
+            @last_query = value if String === value
 
             return value
         end
 
-        # provide a list of tab completions given the prompted value
+        # Provide a list of tab completions given the prompted value.
         #
         def complete(str)
             if str[0] == ?.
@@ -170,13 +171,13 @@ module RSQL
             ret
         end
 
-        # reset the hexstr limit back to the default value
+        # Reset the hexstr limit back to the default value.
         #
         def reset_hexstr_limit
             @hexstr_limit = HEXSTR_LIMIT
         end
 
-        # convert a binary string value into a hexadecimal string
+        # Convert a binary string value into a hexadecimal string.
         #
         def to_hexstr(bin, limit=@hexstr_limit, prefix='0x')
             cnt = 0
@@ -201,9 +202,9 @@ module RSQL
         ########################################
         private
 
-            # display a listing of all registered helpers
+            # Display a listing of all registered helpers.
             #
-            def list
+            def list            # :doc:
                 usagelen = 0
                 desclen  = 0
 
@@ -226,35 +227,35 @@ module RSQL
                 return nil
             end
 
-            # show all the pertinent version data we have about our
-            # software and the mysql connection
+            # Show all the pertinent version data we have about our
+            # software and the mysql connection.
             #
-            def version
+            def version         # :doc:
                 puts "rsql:v#{RSQL::VERSION} client:v#{MySQLResults.conn.client_info} " \
                      "server:v#{MySQLResults.conn.server_info}"
             end
 
-            # provide a helper utility in the event a registered
-            # method would like to make its own queries
+            # Provide a helper utility in the event a registered
+            # method would like to make its own queries.
             #
-            def query(content, *args)
+            def query(content, *args) # :doc:
                 MySQLResults.query(content, self, *args)
             end
 
-            # exactly like register below except in addition to registering as
+            # Exactly like register below except in addition to registering as
             # a usable call for later, we will also use these as soon as we
             # have a connection to MySQL.
             #
-            def register_init(sym, *args, &block)
+            def register_init(sym, *args, &block) # :doc:
                 register(sym, *args, &block)
                 @init_registrations << sym
             end
 
-            # if given a block, allow the block to be called later, otherwise,
+            # If given a block, allow the block to be called later, otherwise,
             # create a method whose sole purpose is to dynmaically generate
-            # sql with variable interpolation
+            # sql with variable interpolation.
             #
-            def register(sym, *args, &block)
+            def register(sym, *args, &block) # :doc:
                 name = usage = sym.to_s
 
                 if Hash === args.last
@@ -282,9 +283,9 @@ module RSQL
                 @registrations[sym] = Registration.new(name, args, bangs, block, usage, desc)
             end
 
-            # convert a collection of values into to hexadecimal strings
+            # Convert a collection of values into hexadecimal strings.
             #
-            def hexify(*ids)
+            def hexify(*ids)    # :doc:
                 ids.collect do |id|
                     case id
                     when String
@@ -301,7 +302,7 @@ module RSQL
                 end.join(',')
             end
 
-            # convert a number of bytes into a human readable string
+            # Convert a number of bytes into a human readable string.
             #
             def humanize_bytes(bytes)
                 abbrev = ['B','KB','MB','GB','TB','PB','EB','ZB','YB']
@@ -322,9 +323,9 @@ module RSQL
                 return bytes.to_s
             end
 
-            # convert a human readable string of bytes into an integer
+            # Convert a human readable string of bytes into an integer.
             #
-            def dehumanize_bytes(str)
+            def dehumanize_bytes(str) # :doc:
                 abbrev = ['B','KB','MB','GB','TB','PB','EB','ZB','YB']
 
                 if str =~ /(\d+(\.\d+)?)\s*(\w+)?/
@@ -340,9 +341,9 @@ module RSQL
                 raise "unable to parse '#{str}'"
             end
 
-            # convert a time into a relative string from now
+            # Convert a time into a relative string from now.
             #
-            def relative_time(dt)
+            def relative_time(dt) # :doc:
                 return dt unless String === dt
 
                 now = Time.now.utc
@@ -372,19 +373,19 @@ module RSQL
                 return "#{fmt % diff} seconds #{postfix}"
             end
 
-            # squeeze out any spaces
+            # Squeeze out any spaces.
             #
-            def sqeeze!(sql)
+            def sqeeze!(sql)    # :doc:
                 sql.gsub!(/\s+/,' ')
                 sql.strip!
                 sql << ';' unless sql[-1] == ?;
                 sql
             end
 
-            # safely store an object into a file keeping at most one
-            # backup if the file already exists
+            # Safely store an object into a file keeping at most one
+            # backup if the file already exists.
             #
-            def safe_save(obj, name)
+            def safe_save(obj, name) # :doc:
                 name += '.yml' unless File.extname(name) == '.yml'
                 tn = "#{name}.tmp"
                 File.open(tn, 'w'){|f| YAML.dump(obj, f)}

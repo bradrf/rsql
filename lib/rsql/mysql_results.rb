@@ -1,3 +1,4 @@
+#--
 # Copyright (C) 2011 by Brad Robel-Forrest <brad+rsql@gigglewax.com>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -21,7 +22,7 @@
 module RSQL
 
     ########################################
-    # A wrapper to make it easier to work with MySQL results (and prettier)
+    # A wrapper to make it easier to work with MySQL results (and prettier).
     #
     class MySQLResults
 
@@ -51,20 +52,21 @@ module RSQL
             def max_rows; @@max_rows; end
             def max_rows=(cnt); @@max_rows = cnt; end
 
-            # get the name of the current database in use
+            # Get the name of the current database in use.
             #
             def database_name; @@database_name; end
 
-            # get the list of databases available
+            # Get the list of databases available.
             #
             def databases
                 @@databases ||= @@conn.list_dbs.sort if @@conn
             end
 
-            # get the list of tables available (if a database is
-            # selected) at most once every ten seconds
-            #
             @@last_table_list = Hash.new{|h,k| h[k] = [Time.at(0), []]}
+
+            # Get the list of tables available (if a database is
+            # selected) at most once every ten seconds.
+            #
             def tables(database = nil)
                 now = Time.now
                 (last, tables) = @@last_table_list[database]
@@ -85,8 +87,8 @@ module RSQL
                 tables
             end
 
-            # provide a list of tab completions given the prompted
-            # value
+            # Provide a list of tab completions given the prompted
+            # value.
             #
             def complete(str)
                 return [] unless @@conn
@@ -116,7 +118,7 @@ module RSQL
                 return ret
             end
 
-            # get results from a query
+            # Get results from a query.
             #
             def query(sql, eval_context, raw=false, max_rows=@@max_rows)
                 start   = Time.now.to_f
@@ -199,31 +201,35 @@ module RSQL
             end
         end
 
-        # get the number of rows that were affected by the query
+        # Get the query associated with these results.
         #
-        attr_reader :sql, :affected_rows
+        attr_reader :sql
 
-        # determine if there are any results
+        # Get the number of rows that were affected by the query.
+        #
+        attr_reader :affected_rows
+
+        # Determine if there are any results.
         #
         def any?
             !@table.nil?
         end
 
-        # determine if there are no results
+        # Determine if there are no results.
         #
         def empty?
             @table.nil?
         end
 
-        # get the number of rows available in the results
+        # Get the number of rows available in the results.
         #
         def num_rows
             @table ? @table.size : 0
         end
 
-        # get a row from the table hashed with the field names
+        # Get a row from the table hashed with the field names.
         #
-        def row_hash(index)
+        def [](index)
             hash = {}
             if @fields && @table
                 row = @table[index]
@@ -232,8 +238,8 @@ module RSQL
             return hash
         end
 
-        # iterate through each row of the table hashed with the field
-        # names
+        # Iterate through each row of the table hashed with the field
+        # names.
         #
         def each_hash(&block)
             if @table
@@ -245,7 +251,7 @@ module RSQL
             end
         end
 
-        # show a set of results in a decent fashion
+        # Show a set of results in a decent fashion.
         #
         def display_by_column(io=$stdout)
             if @fields && @table
@@ -268,7 +274,7 @@ module RSQL
             end
         end
 
-        # show a set of results with a single character separation
+        # Show a set of results with a single character separation.
         #
         def display_by_batch(io=$stdout)
             if @fields && @table
@@ -277,7 +283,7 @@ module RSQL
             end
         end
 
-        # show a set of results line separated
+        # Show a set of results line separated.
         #
         def display_by_line(io=$stdout)
             if @fields && @table
@@ -297,6 +303,8 @@ module RSQL
             display_stats(io)
         end
 
+        # Show a summary line of the results.
+        #
         def display_stats(io=$stdout, hdr='')
             if @table
                 if @database_changed

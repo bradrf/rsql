@@ -1,0 +1,86 @@
+= RSQL
+
+Homepage:: https://github.com/bradrf/rsql
+
+== DESCRIPTION
+
+This is an application to make working with a SQL command line more
+convenient by allowing interaction with recipes and Ruby code in
+addition to embedding the common operation of using a SSH connection
+to an intermediary host for access to the SQL server.
+
+=== Installation
+
+  gem install rsql
+
+== USAGE
+
+RSQL is invoked from the comamnd line using:
+
+  rsql [<options>] <mysql_host> [<database>] [-e [<query>]]
+
+=== Options
+
+-version::
+  Display the version of RSQL that is installed.
+
+-rc _rcfile_::
+  Override loading the .rsqlrc file from the HOME directory for one in
+  a different location.
+
+-maxrows _max_::
+  Override the maximum number of rows to process.
+
+-batch _field_separator_::
+  Run in batch mode using the separator specifed (e.g. a /t will
+  separate fields with a tab character).
+
+-ssh _ssh_host_::
+  Establish an SSH connection before connecting to the MySQL host.
+
+-e [_query_]::
+  Run a query from the command line (i.e. not interactive). If a
+  _query_ is not provided, STDIN will be read. Multiple commands can
+  be issued in one set by separation with semicolons just as if they
+  had been provided at the RSQL prompt interactively. This option
+  *must* be the last option specified.
+
+The _ssh_host_ and _mysql_host_ values may also provide _user_ and
+_password_ values using the following syntax:
+
+  [<user>[:<password>]@]<host>
+
+It is possible to provide empty passwords by simply having nothing
+listed between demarcation points:
+
+  root:@127.0.0.1
+
+Once at the +rsql+ prompt, normal MySQL queries can be entered as
+expected, ending each with a semicolon (;).
+
+== EXAMPLE
+
+Try walking through link:../example.rsqlrc.
+
+== LICENSE
+
+Copyright (C) 2011 by Brad Robel-Forrest <brad+rsql@gigglewax.com>
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

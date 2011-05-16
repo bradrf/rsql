@@ -1,6 +1,13 @@
 require 'rake'
-require 'rake/clean'
+require 'rake/rdoctask'
 require 'rake/gempackagetask'
+require 'rake/clean'
+
+Rake::RDocTask.new do |rd|
+    rd.title = 'RSQL Documentation'
+    rd.main = "README.rdoc"
+    rd.rdoc_files.include('README.rdoc', `git ls-files lib`.split($/))
+end
 
 spec = Gem::Specification.new do |s|
     rsql_version = nil
@@ -20,10 +27,12 @@ spec = Gem::Specification.new do |s|
     s.require_path = 'lib'
     s.files = `git ls-files`.split($/) << 'lib/rsql/mysql.rb'
     s.files.delete('Rakefile')
+    s.rdoc_options << '--title' << 'RSQL Documentation' << '--main' << 'README.rdoc'
+    s.extra_rdoc_files = ['README.rdoc']
     s.executables = 'rsql'
     s.homepage = 'https://github.com/bradrf/rsql'
     s.description = <<EOF
-Rsql makes working with a MySQL command line more convenient through
+RSQL makes working with a MySQL command line more convenient through
 the use of recipes and embedding the common operation of using a SSH
 connection to an intermediary host for access to the MySQL server.
 EOF

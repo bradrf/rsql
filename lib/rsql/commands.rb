@@ -1,3 +1,4 @@
+#--
 # Copyright (C) 2011 by Brad Robel-Forrest <brad+rsql@gigglewax.com>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -33,9 +34,11 @@ module RSQL
 
         ########################################
 
-        # split on separators, allowing for escaping
-        #
+        # Split commands on these characters.
         SEPARATORS = ';|!'
+
+        # Split on separators, allowing for escaping;
+        #
         def initialize(input, default_displayer)
             @default_displayer = default_displayer
             @cmds = []

@@ -96,11 +96,6 @@ def split_login(str)
     end
 end
 
-if ARGV.delete('-help')
-    eval_context.help
-    exit
-end
-
 if ARGV.delete('-version')
     puts "#{bn} v#{RSQL::VERSION}"
     exit
