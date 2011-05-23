@@ -39,7 +39,7 @@ class TestEvalContext < Test::Unit::TestCase
 
     def test_eval
         out = StringIO.new
-        
+
         # test a simple string registration
         val = @ctx.safe_eval('cleanup_example', nil, out)
         assert_equal('DROP TEMPORARY TABLE IF EXISTS rsql_example;', val)

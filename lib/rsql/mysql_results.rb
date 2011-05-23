@@ -56,7 +56,7 @@ module RSQL
             # Get the name of the current database in use.
             #
             def database_name; @@database_name; end
-            
+
             # Set the name of the current database in use.
             #
             def database_name=(database); @@database_name = database; end
