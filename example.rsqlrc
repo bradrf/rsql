@@ -76,14 +76,22 @@ DROP TEMPORARY TABLE IF EXISTS #{@rsql_table}
 #
 register :fill_table, :desc => 'Populate the example table.' do
     sql = ''
-    10.times do |i|
-        sql << "
+    9.times do |i|
+        sql << %{
 INSERT IGNORE INTO #{@rsql_table}
    SET  name='fancy#{i}',
        value=#{i**i},
        stuff=#{hexify(rand((i+1)**100))};
-"
+}
     end
+    # one more that isn't randomly generated so we can reference it
+    # later
+        sql << %{
+INSERT IGNORE INTO #{@rsql_table}
+   SET  name='fancy9',
+       value=#{9**9},
+       stuff=0x1234567891234567891234567890;
+}
     sqeeze!(sql)
 end
 
@@ -266,7 +274,7 @@ end
 #
 # RSQL makes querying for hex strings from within a recipe easy too.
 #
-#   rsql> .find_stuff 0x346950d3c051c8ac51092a3a2eff7503ef7f571c;
+#   rsql> .find_stuff 0x1234567891234567891234567890;
 #
 register :find_stuff, :stuff, %q{
 SELECT * FROM #{@rsql_table} WHERE stuff=#{hexify stuff}
