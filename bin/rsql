@@ -31,7 +31,9 @@ require 'thread'
 require 'timeout'
 require 'readline'
 require 'yaml'
-require 'net/ssh'
+
+# This is included below to make it optional if SSH is never needed.
+# require 'net/ssh'
 
 # allow ourselves to be run from within a source tree
 if File.symlink?(__FILE__)
@@ -114,6 +116,7 @@ if i = ARGV.index('-batch')
 end
 
 if i = ARGV.index('-ssh')
+    require 'net/ssh'
     ARGV.delete_at(i)
     (ssh_host, ssh_user, ssh_password) = split_login(ARGV.delete_at(i))
 end
@@ -152,7 +155,7 @@ USAGE
 end
 
 (mysql_host, mysql_user, mysql_password) = split_login(ARGV.shift)
-mysql_password = get_password('mysql password? ') unless mysql_password
+mysql_password ||= get_password("#{mysql_host}@#{mysql_host} MySQL password: ")
 real_mysql_host = mysql_host
 
 if ssh_host
@@ -162,7 +165,7 @@ else
     mysql_port = 3306
 end
 
-db_name = ARGV.shift
+MySQLResults.database_name = ARGV.shift
 
 unless $stdin.tty?
     batch_input = $stdin.read.gsub(/\r?\n/,';')
@@ -192,7 +195,7 @@ rescue Timeout::Error
     $stderr.puts "Timed out waiting to close #{name} connection"
     false
 rescue Exception => ex
-    $stderr.puts(ex)
+    $stderr.puts("#{ex.class}: #{ex.message}")
     false
 end
 
@@ -206,32 +209,65 @@ if ssh_host
     # us...or just loop reconnection here in the thread...
 
     port_opened = false
+    getting_password = false
+    password_retry_cnt = 0
 
     puts "SSH #{ssh_user}#{ssh_user ? '@' : ''}#{ssh_host}..." unless batch_input
     ssh = nil
     ssh_thread = Thread.new do
         opts = {:timeout => 15}
-        opts[:password] = ssh_password if ssh_password
-        ssh = Net::SSH.start(ssh_host, ssh_user, opts)
-        ssh_enabled = true
-        ssh.forward.local(mysql_port, mysql_host, 3306)
-        port_opened = true
-        ssh.loop(1) { ssh_enabled }
+        begin
+            opts[:password] = ssh_password if ssh_password
+            ssh = Net::SSH.start(ssh_host, ssh_user, opts)
+            ssh_enabled = true
+        rescue Net::SSH::AuthenticationFailed
+            if 2 < password_retry_cnt
+                $stderr.puts 'Permission denied. Giving up.'
+            else
+                $stderr.puts 'Permission denied, please try again.' if ssh_password
+                getting_password = true
+                ssh_password = get_password("#{ssh_user}@#{ssh_host} SSH password: ")
+                getting_password = false
+                unless ssh_password.empty?
+                    password_retry_cnt += 1
+                    retry
+                end
+            end
+        end
+        if ssh_enabled
+            ssh.forward.local(mysql_port, mysql_host, 3306)
+            port_opened = true
+            ssh.loop(1) { ssh_enabled }
+        end
     end
 
     15.times do
-        break if ssh_enabled && port_opened
+        break if !ssh_thread.alive? || (ssh_enabled && port_opened)
+        while getting_password
+            # give them extra time
+            sleep(1)
+        end
         sleep(1)
     end
 
     unless ssh_enabled
-        $stderr.puts "failed to connect to #{ssh_host} ssh host in 15 seconds"
+        $stderr.puts "failed to connect to #{ssh_host} SSH host"
+        begin
+            ssh_thread.join
+        rescue Exception => ex
+            $stderr.puts("  => #{ex.message} (#{ex.class})")
+        end
         exit 1
     end
 
     unless port_opened
         $stderr.puts("failed to forward #{mysql_port}:#{mysql_host}:3306 via #{ssh_host} " \
                      "ssh host in 15 seconds")
+        begin
+            ssh_thread.join
+        rescue Exception => ex
+            $stderr.puts("  => #{ex.message}: #{ex.class}")
+        end
         exit 1
     end
 
@@ -241,13 +277,25 @@ end
 
 puts "MySQL #{mysql_user}@#{real_mysql_host}..." unless batch_input
 begin
-    MySQLResults.conn = Mysql.new(mysql_host, mysql_user, mysql_password, db_name, mysql_port)
+    MySQLResults.conn = Mysql.new(mysql_host, mysql_user, mysql_password,
+                                  MySQLResults.database_name, mysql_port)
 rescue Mysql::Error => ex
     if ex.message.include?('Client does not support authentication')
         $stderr.puts "failed to connect to #{mysql_host} mysql server: unknown credentials?"
     else
         $stderr.puts "failed to connect to #{mysql_host} mysql server: #{ex.message}"
     end
+    exit 1
+rescue NoMethodError
+    # this happens when mysql tries to read four bytes and assume it
+    # can index into them even when read returned nil...this happens
+    # because the connect succeeds due to the SSH forwarded port but
+    # then there isn't anybody connected on the remote side of the
+    # proxy
+    $stderr.puts "failed to connect to #{mysql_host} mysql server"
+    exit 1
+rescue Exception => ex
+    $stderr.puts "failed to connect to #{mysql_host} mysql server: #{ex.message} (#{ex.class})"
     exit 1
 end
 
@@ -270,8 +318,7 @@ cmd_thread = Thread.new do
             me[:shutdown] = true         # only run once
             input = batch_input
         else
-            db_name = (MySQLResults.database_name || db_name)
-            puts '',"[#{mysql_user}@#{ssh_host||mysql_host}:#{db_name}]"
+            puts '',"[#{mysql_user}@#{ssh_host||mysql_host}:#{MySQLResults.database_name}]"
             input = ''
             prompt = bn + '> '
             loop do

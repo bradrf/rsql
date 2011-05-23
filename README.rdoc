@@ -13,6 +13,11 @@ to an intermediary host for access to the SQL server.
 
   gem install rsql
 
+Alternatively, RSQL can be downloaded as a tar.gz or zip and run
+directly from within the unpacked source directory. The only
+requirement is that SSH functionality will be disabled unless the
+Net::SSH Ruby library is installed and available.
+
 == USAGE
 
 RSQL is invoked from the comamnd line using:
@@ -45,22 +50,32 @@ RSQL is invoked from the comamnd line using:
   had been provided at the RSQL prompt interactively. This option
   *must* be the last option specified.
 
-The _ssh_host_ and _mysql_host_ values may also provide _user_ and
-_password_ values using the following syntax:
+The _ssh_host_ and _mysql_host_ arguments may optionally include
+_user_ and _password_ values using the following syntax:
 
   [<user>[:<password>]@]<host>
 
-It is possible to provide empty passwords by simply having nothing
-listed between demarcation points:
+An empty password can be provided by simply listing nothing between
+demarcation points:
 
   root:@127.0.0.1
 
 Once at the +rsql+ prompt, normal MySQL queries can be entered as
-expected, ending each with a semicolon (;).
+expected, ending each with a semicolon (;) for columnar output or \G
+for line-by-line output formatting.
 
-== EXAMPLE
+Ruby commands will be evaluated for any content entered at the RSQL
+prompt beginning with a period (.).
 
-Try walking through link:../example.rsqlrc.
+== GETTING STARTED
+
+This example walks through many features of RSQL including how to
+build up recipes:
+
+https://github.com/bradrf/rsql/raw/master/example.rsqlrc
+
+The file is available as example.rsqlrc installed with the gem or
+downloaded with the source.
 
 == LICENSE
 

@@ -32,6 +32,7 @@ module RSQL
         @@field_separator = ' '
         @@max_rows        = 1000
         @@database_name   = nil
+        @@databases       = nil
 
         class MaxRowsException < RangeError
             def initialize(rows, max)
@@ -55,36 +56,49 @@ module RSQL
             # Get the name of the current database in use.
             #
             def database_name; @@database_name; end
+            
+            # Set the name of the current database in use.
+            #
+            def database_name=(database); @@database_name = database; end
 
             # Get the list of databases available.
             #
             def databases
-                @@databases ||= @@conn.list_dbs.sort if @@conn
+                if @@conn && @@databases.nil?
+                    @@databases = @@conn.list_dbs.sort
+                end
+                @@databases
             end
 
-            @@last_table_list = Hash.new{|h,k| h[k] = [Time.at(0), []]}
+            # Force the table cache to be reread on the next request
+            # for tables.
+            #
+            def reset_cache
+                @@databases       = nil
+                @@last_table_list = Hash.new{|h,k| h[k] = [Time.at(0), []]}
+            end
 
             # Get the list of tables available (if a database is
             # selected) at most once every ten seconds.
             #
-            def tables(database = nil)
+            def tables(database=@@database_name)
                 now = Time.now
-                (last, tables) = @@last_table_list[database]
+                (last, tnames) = @@last_table_list[database]
                 if last + 10 < now
                     begin
                         if @@conn
-                            if database && database != database_name
-                                tables = @@conn.list_tables("FROM #{database}").sort
+                            if database && database != @@database_name
+                                tnames = @@conn.list_tables("FROM #{database}").sort
                             else
-                                tables = @@conn.list_tables.sort
+                                tnames = @@conn.list_tables.sort
                             end
                         end
                     rescue Mysql::Error => ex
-                        tables = []
+                        tnames = []
                     end
-                    @@last_table_list[database] = [now, tables]
+                    @@last_table_list[database] = [now, tnames]
                 end
-                tables
+                tnames
             end
 
             # Provide a list of tab completions given the prompted
@@ -105,16 +119,16 @@ module RSQL
                         end
                     end
                     ret.compact!
-                    return ret
+                else
+                    ret = databases.select{|n| n != @@database_name && n.downcase.start_with?(str)}
+                    if @@database_name
+                        # if we've selected a db then we want to offer
+                        # completions for other dbs as well as tables for
+                        # the currently selected db
+                        ret += tables.select{|n| n.downcase.start_with?(str)}
+                    end
                 end
 
-                ret = databases.select{|n| n != database_name && n.downcase.start_with?(str)}
-                if database_name
-                    # if we've selected a db then we want to offer
-                    # completions for other dbs as well as tables for
-                    # the currently selected db
-                    ret += tables.select{|n| n.downcase.start_with?(str)}
-                end
                 return ret
             end
 
@@ -181,6 +195,9 @@ module RSQL
 
         end # class << self
 
+        # init the cache
+        reset_cache
+
         ########################################
 
         def initialize(sql, elapsed, affected_rows,
@@ -230,11 +247,12 @@ module RSQL
         # Get a row from the table hashed with the field names.
         #
         def [](index)
-            hash = {}
-            if @fields && @table
-                row = @table[index]
-                @fields.each_with_index {|f,i| hash[f.name] = row[i]}
+            if index < 0 || !@fields || !@table || @table.size <= index
+                return nil
             end
+            hash = {}
+            row = @table[index]
+            @fields.each_with_index {|f,i| hash[f.name] = row[i]}
             return hash
         end
 

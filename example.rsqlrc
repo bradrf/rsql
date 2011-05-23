@@ -206,7 +206,7 @@ end
 # say if we want to process results and keep our data around in a
 # file.
 #
-#   rsql> select name, value from rsql_example | save_values 'myobj'
+#   rsql> select name, value from rsql_example | save_values 'myobj';
 #
 # After running this, a myobj.yml file should be created in the local
 # directory containing all the content from the query. To accomplish
@@ -225,7 +225,7 @@ end
 # Dealing with variable arguments is pretty straightforward as well,
 # but with a little syntactic twist.
 #
-#   rsql> .find_names 'fancy3', 'fancy8'
+#   rsql> .find_names 'fancy3', 'fancy8';
 #
 # Here we simply expand the arguments.
 #
@@ -259,14 +259,14 @@ end
 # to our consoles than just dumping it. It converts it into a
 # hexadecimal string.
 #
-#   rsql> SELECT stuff FROM rsql_example
+#   rsql> SELECT stuff FROM rsql_example;
 #
 # The default is to limit the hex strings to 32 "bytes" reported. This
 # can be configured any time by setting the @hexstr_limit.
 #
 # RSQL makes querying for hex strings from within a recipe easy too.
 #
-#   rsql> .find_stuff 0x346950d3c051c8ac51092a3a2eff7503ef7f571c
+#   rsql> .find_stuff 0x346950d3c051c8ac51092a3a2eff7503ef7f571c;
 #
 register :find_stuff, :stuff, %q{
 SELECT * FROM #{@rsql_table} WHERE stuff=#{hexify stuff}

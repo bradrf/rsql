@@ -49,6 +49,8 @@ module RSQL
             next_is_ruby = false
 
             input.scan(/[^#{SEPARATORS}]+.?/) do |match|
+                orig_match = match
+
                 if i = SEPARATORS.index(match[-1])
                     sep = SEPARATORS[i]
                     match.chop!
@@ -101,7 +103,7 @@ module RSQL
                         in_pipe_arg = false
                         esc << match << '|'
                         next
-                    elsif match =~ /\{\s*|do\s*/
+                    elsif orig_match =~ /\{\s*|do\s*/
                         in_pipe_arg = true
                         esc << match << '|'
                         next
@@ -190,7 +192,7 @@ module RSQL
                     stdout = cmd.displayer == :pipe ? StringIO.new : nil
                     value = eval_context.safe_eval(cmd.content, last_results, stdout)
                     if String === value
-                        cmds = Commands.new(value, @default_displayer)
+                        cmds = Commands.new(value, cmd.displayer)
                         unless cmds.empty?
                             # need to carry along the bangs into the
                             # last command so we don't lose them
@@ -212,7 +214,7 @@ module RSQL
                         last_results = MySQLResults.query(value, eval_context)
                     rescue MySQLResults::MaxRowsException => ex
                         $stderr.puts "refusing to process #{ex.rows} rows (max: #{ex.max})"
-                    rescue MysqlError => ex
+                    rescue Mysql::Error => ex
                         $stderr.puts ex.message
                     rescue Exception => ex
                         $stderr.puts ex.inspect

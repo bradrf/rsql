@@ -1,12 +1,32 @@
 require 'rake'
 require 'rake/rdoctask'
+require 'rake/testtask'
 require 'rake/gempackagetask'
 require 'rake/clean'
 
+task :default => [:rdoc, :test]
+
 Rake::RDocTask.new do |rd|
+    rd.rdoc_dir = 'doc'
     rd.title = 'RSQL Documentation'
     rd.main = "README.rdoc"
-    rd.rdoc_files.include('README.rdoc', `git ls-files lib`.split($/))
+    rd.rdoc_files.include('README.rdoc', 'lib')
+    rd.options << '--exclude' << 'mysql.rb'
+end
+
+Rake::TestTask.new do |t|
+  t.libs << 'test'
+  t.test_files = FileList['test/test_*.rb']
+end
+
+begin
+    # don't require rcov if they haven't installed it
+    require 'rcov/rcovtask'
+    Rcov::RcovTask.new do |t|
+        t.libs << "test"
+        t.test_files = FileList['test/test*.rb']
+    end
+rescue LoadError
 end
 
 spec = Gem::Specification.new do |s|
@@ -27,7 +47,10 @@ spec = Gem::Specification.new do |s|
     s.require_path = 'lib'
     s.files = `git ls-files`.split($/) << 'lib/rsql/mysql.rb'
     s.files.delete('Rakefile')
-    s.rdoc_options << '--title' << 'RSQL Documentation' << '--main' << 'README.rdoc'
+    s.rdoc_options <<
+        '--title' << 'RSQL Documentation' <<
+        '--main' << 'README.rdoc' <<
+        '--exclude' << 'mysql.rb'
     s.extra_rdoc_files = ['README.rdoc']
     s.executables = 'rsql'
     s.homepage = 'https://github.com/bradrf/rsql'
@@ -42,8 +65,6 @@ Rake::GemPackageTask.new(spec) do |pkg|
    pkg.need_zip = true
    pkg.need_tar = true
 end
-
-CLEAN.include('pkg')
 
 # Embed TOMITA Masahiro\'s pure Ruby MySQL client.
 
@@ -78,4 +99,4 @@ end
 task :package => 'lib/rsql/mysql.rb'
 task :gem => 'lib/rsql/mysql.rb'
 
-CLEAN.include(MYSQL_TGZ, 'mysql.rb')
+CLOBBER.include(MYSQL_TGZ, 'mysql.rb')

@@ -21,6 +21,8 @@
 
 module RSQL
 
+    require 'time'
+
     ################################################################################
     # This class wraps all dynamic evaluation and serves as the reflection
     # class for adding methods dynamically.
@@ -283,6 +285,13 @@ module RSQL
                 @registrations[sym] = Registration.new(name, args, bangs, block, usage, desc)
             end
 
+            # Convert a list of values into a comma-delimited string,
+            # optionally with each value in single quotes.
+            #
+            def to_list(vals, quoted=false) # :doc:
+                vals.collect{|v| quoted ? "'#{v}'" : v.to_s}.join(',')
+            end
+
             # Convert a collection of values into hexadecimal strings.
             #
             def hexify(*ids)    # :doc:
@@ -304,7 +313,7 @@ module RSQL
 
             # Convert a number of bytes into a human readable string.
             #
-            def humanize_bytes(bytes)
+            def humanize_bytes(bytes) # :doc:
                 abbrev = ['B','KB','MB','GB','TB','PB','EB','ZB','YB']
                 bytes = bytes.to_i
                 fmt = '%7.2f'
@@ -339,6 +348,16 @@ module RSQL
                 end
 
                 raise "unable to parse '#{str}'"
+            end
+
+            # Show a nice percent value of a decimal string.
+            #
+            def humanize_percentage(decimal, precision=1) # :doc:
+                if decimal.nil? || decimal == 'NULL'
+                    'NA'
+                else
+                    "%5.#{precision}f%%" % (decimal.to_f * 100)
+                end
             end
 
             # Convert a time into a relative string from now.
