@@ -61,15 +61,33 @@ end
 eval_context.load(rc_fn, false) if File.exists?(rc_fn)
 
 def get_password(prompt)
-    iswin = nil != (RUBY_PLATFORM =~ /(win|w)32$/)
     STDOUT.print(prompt)
     STDOUT.flush
-    `stty -echo` unless iswin
-    password = STDIN.gets
-    password.chomp!
-ensure
-    `stty echo` unless iswin
-    STDOUT.puts
+    password = ''
+
+    if RUBY_PLATFORM.match(/(win|w)32$/)
+        require 'Win32API'
+        begin
+            wingetc = Win32API.new("msvcrt", "_getch", [ ], "L")
+        rescue Exception
+            wingetc = Win32API.new("crtdll", "_getch", [ ], "L")
+        end
+        while true do
+            ch = wingetc.Call
+            break if ch == ?\n || ch == ?\r
+            password << ch
+        end
+    else
+        begin
+            `stty -echo`
+            password = STDIN.gets
+            password.chomp!
+        ensure
+            `stty echo`
+            STDOUT.puts
+        end
+    end
+
     return password
 end
 
