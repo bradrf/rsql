@@ -29,18 +29,19 @@ module RSQL
     #
     class EvalContext
 
-        Registration = Struct.new(:name, :args, :bangs, :block, :usage, :desc)
+        Registration = Struct.new(:name, :args, :bangs, :block, :usage, :desc, :source)
 
         HEXSTR_LIMIT = 32
 
-        def initialize
+        def initialize(verbose=false)
+            @verbose      = verbose
             @hexstr_limit = HEXSTR_LIMIT
-            @results = nil
-            @last_query = nil
+            @results      = nil
+            @last_query   = nil
 
-            @loaded_fns = []
+            @loaded_fns         = []
             @init_registrations = []
-            @bangs = {}
+            @bangs              = {}
 
             @registrations = {
                 :version => Registration.new('version', [], {},
@@ -51,6 +52,10 @@ module RSQL
                                             method(:reload),
                                             'reload',
                                             'Reload the rsqlrc file.'),
+                :desc => Registration.new('desc', [], {},
+                                          method(:desc),
+                                          'desc',
+                                          'Describe the content of a recipe.'),
                 :last_query => Registration.new('last_query', [], {},
                                                 Proc.new{puts(@last_query)},
                                                 'last_query',
@@ -66,7 +71,7 @@ module RSQL
             }
         end
 
-        attr_accessor :bangs
+        attr_accessor :bangs, :verbose
 
         def call_init_registrations
             @init_registrations.each do |sym|
@@ -125,9 +130,16 @@ module RSQL
             end
 
             # same relaxed call to load too
-            if m = /^\s*load\s+'(.+)'\s*$/.match(content)
+            if m = content.match(/^\s*load\s+'(.+)'\s*$/)
                 self.load(m[1])
                 return
+            end
+
+            # help out the poor user and fix up any describes
+            # requested so they don't need to remember that it needs
+            # to be a symbol passed in
+            if m = content.match(/^\s*desc\s+([^:]\S+)\s*$/)
+                content = "desc :#{m[1]}"
             end
 
             if stdout
@@ -139,7 +151,11 @@ module RSQL
             begin
                 value = Thread.new{ eval('$SAFE=2;' + content) }.value
             rescue Exception => ex
-                $stderr.puts(ex.message.gsub(/\(eval\):\d+:/,''))
+                if @verbose
+                    $stderr.puts("#{ex.class}: #{ex.message}", ex.backtrace)
+                else
+                    $stderr.puts(ex.message.gsub(/\(eval\):\d+:/,''))
+                end
             ensure
                 $stdout = orig_stdout if stdout
             end
@@ -229,6 +245,128 @@ module RSQL
                 return nil
             end
 
+            def params(block)
+                params = ''
+
+                if block.arity != 0 && block.arity != -1 &&
+                        block.inspect.match(/@(.+):(\d+)>$/)
+                    fn = $1
+                    lineno = $2.to_i
+
+                    if fn == '(eval)'
+                        $stderr.puts 'refusing to search an eval block'
+                        return params
+                    end
+
+                    File.open(fn) do |f|
+                        i = 0
+                        found = false
+                        while line = f.gets
+                            i += 1
+                            next if i < lineno
+
+                            unless found
+                                # give up if no start found within 20
+                                # lines
+                                break if lineno + 20 < i
+                                if m = line.match(/(\{|do)(.*)$/)
+                                    # adjust line to be the remainder
+                                    # after the start
+                                    line = m[2]
+                                    found = true
+                                else
+                                    next
+                                end
+                            end
+
+                            if m = line.match(/^\s*\|([^\|]*)\|/)
+                                params = "(#{m[1]})"
+                                break
+                            end
+
+                            # if the params aren't here then we'd
+                            # better only have whitespace otherwise
+                            # this block doesn't have params...even
+                            # though arity says it should
+                            next if line.match(/^\s*$/)
+                            $stderr.puts 'unable to locate params'
+                            break
+                        end
+                    end
+                end
+
+                return params
+            end
+
+            def desc(sym)
+                unless Symbol === sym
+                    $stderr.puts("must provide a Symbol--try prefixing it with a colon (:)")
+                    return
+                end
+
+                unless reg = @registrations[sym]
+                    $stderr.puts "nothing registered as #{sym}"
+                    return
+                end
+
+                if Method === reg.block
+                    $stderr.puts "refusing to describe the #{sym} method"
+                    return
+                end
+
+                if !reg.source && reg.block.inspect.match(/@(.+):(\d+)>$/)
+                    fn = $1
+                    lineno = $2.to_i
+
+                    if fn == __FILE__
+                        $stderr.puts "refusing to describe EvalContext##{sym}"
+                        return
+                    end
+
+                    if fn == '(eval)'
+                        $stderr.puts 'unable to describe body for an eval block'
+                        return
+                    end
+
+                    File.open(fn) do |f|
+                        source = ''
+                        i = 0
+                        ending = nil
+                        found = false
+
+                        while line = f.gets
+                            i += 1
+                            next unless ending || i == lineno
+                            source << line
+                            unless ending
+                                unless m = line.match(/\{|do/)
+                                    $stderr.puts "unable to locate block beginning at #{fn}:#{lineno}"
+                                    return
+                                end
+                                ending = m[0] == '{' ? '\}' : 'end'
+                                next
+                            end
+                            if m = line.match(/^#{ending}/)
+                                found = true
+                                break
+                            end
+                        end
+
+                        if found
+                            reg.source = source
+                        else
+                            reg.source = ''
+                        end
+                    end
+                end
+
+                if reg.source && reg.source.any?
+                    puts reg.source
+                else
+                    $stderr.puts "unable to locate body for #{sym}"
+                end
+            end
+
             # Show all the pertinent version data we have about our
             # software and the mysql connection.
             #
@@ -270,7 +408,8 @@ module RSQL
                 desc = '' unless desc
 
                 if block.nil?
-                    sql = sqeeze!(args.pop)
+                    source = args.pop
+                    sql = sqeeze!(source.dup)
 
                     argstr = args.join(',')
                     usage << "(#{argstr})" unless argstr.empty?
@@ -279,10 +418,11 @@ module RSQL
                     block = Thread.new{ eval(blockstr) }.value
                     args = []
                 else
-                    usage << "(#{block.arity})" unless 0 == block.arity
+                    source = nil
+                    usage << params(block)
                 end
 
-                @registrations[sym] = Registration.new(name, args, bangs, block, usage, desc)
+                @registrations[sym] = Registration.new(name, args, bangs, block, usage, desc, source)
             end
 
             # Convert a list of values into a comma-delimited string,

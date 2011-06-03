@@ -2,7 +2,7 @@
 # Commands using an EvalContext for handling recipes.
 #
 module RSQL
-    VERSION = '0.1.7'
+    VERSION = '0.1.8'
 
     require 'rsql/mysql'
     require 'rsql/mysql_results'

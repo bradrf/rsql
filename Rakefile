@@ -1,8 +1,9 @@
 require 'rake'
-require 'rake/rdoctask'
 require 'rake/testtask'
-require 'rake/gempackagetask'
 require 'rake/clean'
+
+require 'rubygems/package_task'
+require 'rdoc/task'
 
 task :default => [:rdoc, :test]
 
@@ -44,6 +45,10 @@ spec = Gem::Specification.new do |s|
     s.version = rsql_version
     s.required_ruby_version = '>=1.8.2'
     s.add_dependency('net-ssh', '>=2.1.0')
+    s.add_development_dependency('mocha', '>=0.9.12')
+    s.add_development_dependency('rake')
+    s.add_development_dependency('rdoc')
+    s.add_development_dependency('rcov')
     s.require_path = 'lib'
     s.files = `git ls-files`.split($/) << 'lib/rsql/mysql.rb'
     s.files.delete('Rakefile')
@@ -61,7 +66,7 @@ connection to an intermediary host for access to the MySQL server.
 EOF
 end
 
-Rake::GemPackageTask.new(spec) do |pkg|
+Gem::PackageTask.new(spec) do |pkg|
    pkg.need_zip = true
    pkg.need_tar = true
 end
@@ -98,5 +103,7 @@ end
 
 task :package => 'lib/rsql/mysql.rb'
 task :gem => 'lib/rsql/mysql.rb'
+task :test => 'lib/rsql/mysql.rb'
+task :rcov => 'lib/rsql/mysql.rb'
 
 CLOBBER.include(MYSQL_TGZ, 'mysql.rb')

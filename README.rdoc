@@ -29,6 +29,9 @@ RSQL is invoked from the comamnd line using:
 -version::
   Display the version of RSQL that is installed.
 
+-verbose::
+  Display details on SSH connections and evaluation stack traces.
+
 -rc _rcfile_::
   Override loading the .rsqlrc file from the HOME directory for one in
   a different location.
@@ -42,6 +45,10 @@ RSQL is invoked from the comamnd line using:
 
 -ssh _ssh_host_::
   Establish an SSH connection before connecting to the MySQL host.
+
+-sshconfig _ssh_config_::
+  Use a specific SSH configuration file instead of the ones
+  dynamically determined.
 
 -e [_query_]::
   Run a query from the command line (i.e. not interactive). If a

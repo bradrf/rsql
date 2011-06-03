@@ -226,6 +226,10 @@ module RSQL
         #
         attr_reader :affected_rows
 
+        # Get the amount of elapsed time taken by the query.
+        #
+        attr_reader :elapsed
+
         # Determine if there are any results.
         #
         def any?
@@ -247,13 +251,16 @@ module RSQL
         # Get a row from the table hashed with the field names.
         #
         def [](index)
-            if index < 0 || !@fields || !@table || @table.size <= index
+            if !@fields || !@table
                 return nil
             end
-            hash = {}
-            row = @table[index]
-            @fields.each_with_index {|f,i| hash[f.name] = row[i]}
-            return hash
+            if row = @table[index]
+                hash = {}
+                @fields.each_with_index {|f,i| hash[f.name] = row[i]}
+                return hash
+            else
+                return nil
+            end
         end
 
         # Iterate through each row of the table hashed with the field

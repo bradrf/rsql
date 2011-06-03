@@ -121,6 +121,9 @@ if ARGV.delete('-version')
     exit
 end
 
+verbose = ARGV.delete('-verbose')
+eval_context.verbose = verbose
+
 if i = ARGV.index('-maxrows')
     ARGV.delete_at(i)
     MySQLResults.max_rows = ARGV.delete_at(i).to_i
@@ -139,6 +142,11 @@ if i = ARGV.index('-ssh')
     (ssh_host, ssh_user, ssh_password) = split_login(ARGV.delete_at(i))
 end
 
+if i = ARGV.index('-sshconfig')
+    ARGV.delete_at(i)
+    ssh_config = ARGV.delete_at(i)
+end
+
 if i = ARGV.index('-e')
     ARGV.delete_at(i)
     batch_input = ''
@@ -155,9 +163,9 @@ if ARGV.size < 1
     prefix = '        ' << ' ' * bn.size
     $stderr.puts <<USAGE
 
-usage: #{bn} [-version] [-help]
+usage: #{bn} [-version] [-help] [-verbose]
 #{prefix}[-rc <rcfile>] [-maxrows <max>] [-batch <field_separator>]
-#{prefix}[-ssh [<ssh_user>[:<ssh_password>]@]<ssh_host>]
+#{prefix}[-ssh [<ssh_user>[:<ssh_password>]@]<ssh_host>] [-sshconfig <ssh_config>]
 #{prefix}[<mysql_user>[:<mysql_password>]@]<mysql_host>
 #{prefix}[<database>] [-e <remaining_args_as_input>]
 
@@ -234,6 +242,11 @@ if ssh_host
     ssh = nil
     ssh_thread = Thread.new do
         opts = {:timeout => 15}
+        opts.merge!(Net::SSH::Config.load(ssh_config, ssh_host)) if ssh_config
+        if verbose
+            opts[:verbose] = :debug
+            puts "SSH options: #{opts.inspect}"
+        end
         begin
             opts[:password] = ssh_password if ssh_password
             ssh = Net::SSH.start(ssh_host, ssh_user, opts)

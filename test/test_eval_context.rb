@@ -19,8 +19,6 @@ class TestEvalContext < Test::Unit::TestCase
     include RSQL
 
     def setup
-        @orig_stdout = $stdout
-        $stdout = @strout = StringIO.new
         @conn = MySQLResults.conn = mock('Mysql')
         @conn.expects(:query).with(instance_of(String)).returns(nil)
         @conn.expects(:affected_rows).returns(0)
@@ -28,13 +26,13 @@ class TestEvalContext < Test::Unit::TestCase
         @ctx.load(File.join(File.dirname(__FILE__),'..','example.rsqlrc'))
     end
 
-    def teardown
-        $stdout = @orig_stdout
-    end
-
     def test_load
-        @ctx.reload
-        assert_match(/loaded: .+?example.rsqlrc/, @strout.string)
+        orig = $stdout
+        $stdout = out = StringIO.new
+        @ctx.safe_eval('reload', nil, out)
+        assert_match(/loaded: .+?example.rsqlrc/, out.string)
+    ensure
+        $stdout = orig
     end
 
     def test_eval
@@ -64,9 +62,55 @@ class TestEvalContext < Test::Unit::TestCase
         assert_match(/usage\s+description/, out.string)
     end
 
+    def test_params
+        val = @ctx.safe_eval('params(@registrations[:fill_table].block)', nil, nil)
+        assert_equal('', val)
+        val = @ctx.safe_eval('params(@registrations[:save_values].block)', nil, nil)
+        assert_equal('(fn)', val)
+    end
+
+    def test_desc
+        out = StringIO.new
+        err = StringIO.new
+        orig_err = $stderr
+
+        $stderr = err
+        val = @ctx.safe_eval('desc max_rows', nil, out)
+        $sterr = orig_err
+        assert_equal('', out.string)
+        assert_equal('refusing to describe EvalContext#max_rows',
+                     err.string.chomp)
+
+        err.string = ''
+        $stderr = err
+        val = @ctx.safe_eval('desc :sldkfjas', nil, out)
+        $sterr = orig_err
+        assert_equal('', out.string)
+        assert_equal('nothing registered as sldkfjas', err.string.chomp)
+
+        err.string = ''
+        $stderr = err
+        val = @ctx.safe_eval('desc :version', nil, out)
+        $sterr = orig_err
+        assert_equal('', out.string)
+        assert_equal('refusing to describe the version method', err.string.chomp)
+
+        out.string = ''
+        val = @ctx.safe_eval('desc :cleanup_example', nil, out)
+        assert_equal('DROP TEMPORARY TABLE IF EXISTS #{@rsql_table}', out.string.strip)
+
+        out.string = ''
+        val = @ctx.safe_eval('desc :to_report', nil, out)
+        lines = out.string.split($/)
+        assert_match(/^register .+ do$/, lines[0])
+        assert_match(/^\s+puts/, lines[-2])
+        assert_match(/^end$/, lines[-1])
+        assert_equal(12, lines.size)
+    end
+
     def test_complete
         @conn.expects(:list_dbs).returns([])
-        assert_equal(17, @ctx.complete('').size)
+        assert_equal(18, @ctx.complete('').size)
         assert_equal(['version'], @ctx.complete('v'))
         assert_equal(['.version'], @ctx.complete('.v'))
     end
