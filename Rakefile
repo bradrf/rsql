@@ -58,7 +58,7 @@ spec = Gem::Specification.new do |s|
         '--exclude' << 'mysql.rb'
     s.extra_rdoc_files = ['README.rdoc']
     s.executables = 'rsql'
-    s.homepage = 'https://github.com/bradrf/rsql'
+    s.homepage = 'https://rubygems.org/gems/rsql'
     s.description = <<EOF
 RSQL makes working with a MySQL command line more convenient through
 the use of recipes and embedding the common operation of using a SSH

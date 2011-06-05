@@ -242,10 +242,13 @@ if ssh_host
     ssh = nil
     ssh_thread = Thread.new do
         opts = {:timeout => 15}
-        opts.merge!(Net::SSH::Config.load(ssh_config, ssh_host)) if ssh_config
+        opts[:config] = ssh_config if ssh_config
         if verbose
             opts[:verbose] = :debug
             puts "SSH options: #{opts.inspect}"
+            if ssh_config
+                puts "SSH config: #{Net::SSH::Config.load(ssh_config, ssh_host).inspect}"
+            end
         end
         begin
             opts[:password] = ssh_password if ssh_password

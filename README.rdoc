@@ -1,6 +1,6 @@
 = RSQL
 
-Homepage:: https://github.com/bradrf/rsql
+Homepage:: https://rubygems.org/gems/rsql
 
 == DESCRIPTION
 
