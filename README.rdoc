@@ -47,8 +47,8 @@ RSQL is invoked from the comamnd line using:
   Establish an SSH connection before connecting to the MySQL host.
 
 -sshconfig _ssh_config_::
-  Use a specific SSH configuration file instead of the ones
-  dynamically determined.
+  Use a specific SSH configuration file instead of the default files
+  loaded at runtime by Net::SSH.
 
 -e [_query_]::
   Run a query from the command line (i.e. not interactive). If a
@@ -62,17 +62,29 @@ _user_ and _password_ values using the following syntax:
 
   [<user>[:<password>]@]<host>
 
-An empty password can be provided by simply listing nothing between
-demarcation points:
-
-  root:@127.0.0.1
-
 Once at the +rsql+ prompt, normal MySQL queries can be entered as
 expected, ending each with a semicolon (;) for columnar output or \G
 for line-by-line output formatting.
 
 Ruby commands will be evaluated for any content entered at the RSQL
 prompt beginning with a period (.).
+
+==== Command Line Examples
+
+Connect as the "root" user to a MySQL server running on the local
+host, with no password (because there are no characters listed between
+the colon and the at sign):
+
+  rsql root:@127.0.0.1
+
+Connect as the "readonly" user to the "internal.database.com" host's
+MySQL server after establishing a SSH tunnel to the
+"external.acme.com" gateway. In this case, we are either expecting
+that our SSH configuration is set up with the right user name. Because
+we did not provide a password for MySQL, one will be obtained directly
+from the console (without echoing the characters typed).
+
+  rsql -ssh external.acme.com readonly@database.acme.com
 
 == GETTING STARTED
 
@@ -85,6 +97,8 @@ The file is available as example.rsqlrc installed with the gem or
 downloaded with the source.
 
 == LICENSE
+
+RSQL is licensed under an MIT License:
 
 Copyright (C) 2011 by Brad Robel-Forrest <brad+rsql@gigglewax.com>
 

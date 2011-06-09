@@ -149,13 +149,28 @@ module RSQL
             end
 
             begin
-                value = Thread.new{ eval('$SAFE=2;' + content) }.value
-            rescue Exception => ex
-                if @verbose
-                    $stderr.puts("#{ex.class}: #{ex.message}", ex.backtrace)
-                else
-                    $stderr.puts(ex.message.gsub(/\(eval\):\d+:/,''))
+                # in order to print out errors in a loaded script so
+                # that we have file/line info, we need to rescue their
+                # exceptions inside the evaluation
+                th = Thread.new do
+                    eval('$SAFE=2;begin;' << content << %q{
+                      rescue Exception => ex
+                        if @verbose
+                            $stderr.puts("#{ex.class}: #{ex.message}", ex.backtrace)
+                        else
+                            bt = []
+                            ex.backtrace.each do |t|
+                              break if t.include?('lib/rsql/') || t.include?('bin/rsql.rb')
+                              bt << t
+                            end
+                            $stderr.puts(ex.message.gsub(/\(eval\):\d+:/,''),bt)
+                        end
+                      end
+                    })
                 end
+                value = th.value
+            rescue Exception => ex
+                $stderr.puts(ex.message.gsub(/\(eval\):\d+:/,''))
             ensure
                 $stdout = orig_stdout if stdout
             end
