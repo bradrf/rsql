@@ -63,7 +63,7 @@ _user_, _password_, or _port_ values using the following syntax:
   [<user>[:<password>]@]<host>[:<port>]
 
 Once at the +rsql+ prompt, normal MySQL queries can be entered as
-expected, ending each with a semicolon (;) for columnar output or \G
+expected, ending each with a semicolon (;) for columnar output or \\G
 for line-by-line output formatting.
 
 Ruby commands will be evaluated for any content entered at the RSQL
