@@ -21,12 +21,17 @@
 
 module RSQL
 
+    require 'mysql'
+
     ########################################
     # A wrapper to make it easier to work with MySQL results (and prettier).
     #
     class MySQLResults
 
-        HEX_RANGE = (Mysql::Field::TYPE_TINY_BLOB..Mysql::Field::TYPE_STRING)
+        HEX_RANGE = [
+                     Mysql::Field::TYPE_BLOB,
+                     Mysql::Field::TYPE_STRING,
+                    ]
 
         @@conn            = nil
         @@field_separator = ' '

@@ -9,7 +9,6 @@ end
 require 'mocha'
 
 $: << File.expand_path(File.join(File.dirname(__FILE__),'..','lib')) << File.dirname(__FILE__)
-require 'dummy_mysql.rb'
 require 'rsql/mysql_results.rb'
 require 'rsql/eval_context.rb'
 require 'rsql/commands.rb'

@@ -92,7 +92,7 @@ INSERT IGNORE INTO #{@rsql_table}
        value=#{9**9},
        stuff=0x1234567891234567891234567890;
 }
-    sqeeze!(sql)
+    squeeze!(sql)
 end
 
 # A very common reason for recipes is simply to add parameters to be

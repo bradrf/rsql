@@ -160,8 +160,8 @@ module RSQL
                         else
                             bt = []
                             ex.backtrace.each do |t|
-                              break if t.include?('lib/rsql/') || t.include?('bin/rsql.rb')
-                              bt << t
+                              break if t.include?('bin/rsql')
+                              bt << t unless t.include?('lib/rsql/') || t.include?('(eval)')
                             end
                             $stderr.puts(ex.message.gsub(/\(eval\):\d+:/,''),bt)
                         end
@@ -424,7 +424,7 @@ module RSQL
 
                 if block.nil?
                     source = args.pop
-                    sql = sqeeze!(source.dup)
+                    sql = squeeze!(source.dup)
 
                     argstr = args.join(',')
                     usage << "(#{argstr})" unless argstr.empty?
@@ -549,7 +549,7 @@ module RSQL
 
             # Squeeze out any spaces.
             #
-            def sqeeze!(sql)    # :doc:
+            def squeeze!(sql)    # :doc:
                 sql.gsub!(/\s+/,' ')
                 sql.strip!
                 sql << ';' unless sql[-1] == ?;

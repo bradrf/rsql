@@ -27,6 +27,7 @@ begin
 rescue LoadError
 end
 
+require 'tmpdir'
 require 'thread'
 require 'timeout'
 require 'readline'
@@ -92,10 +93,12 @@ def get_password(prompt)
 end
 
 # safely separate login credentials while preserving "emtpy" values--
-# anything of the form [<username>[:<password]@]<host>
+# anything of the form [<username>[:<password]@]<host>[:<port>]
 #
 def split_login(str)
     login = []
+    # search from the right so we don't pick out ampersands in a
+    # password or username
     if i = str.rindex(?@)
         login << str[i+1..-1]
         if 0 < i
@@ -113,6 +116,11 @@ def split_login(str)
         end
     else
         login << str
+    end
+    if login.first.sub!(/:(\d+)$/,'')
+        login << $1.to_i
+    else
+        login << nil
     end
 end
 
@@ -139,7 +147,7 @@ end
 if i = ARGV.index('-ssh')
     require 'net/ssh'
     ARGV.delete_at(i)
-    (ssh_host, ssh_user, ssh_password) = split_login(ARGV.delete_at(i))
+    (ssh_host, ssh_user, ssh_password, ssh_port) = split_login(ARGV.delete_at(i))
 end
 
 if i = ARGV.index('-sshconfig')
@@ -165,8 +173,9 @@ if ARGV.size < 1
 
 usage: #{bn} [-version] [-help] [-verbose]
 #{prefix}[-rc <rcfile>] [-maxrows <max>] [-batch <field_separator>]
-#{prefix}[-ssh [<ssh_user>[:<ssh_password>]@]<ssh_host>] [-sshconfig <ssh_config>]
-#{prefix}[<mysql_user>[:<mysql_password>]@]<mysql_host>
+#{prefix}[-ssh [<ssh_user>[:<ssh_password>]@]<ssh_host>[:<ssh_port>]
+#{prefix}[-sshconfig <ssh_config>]
+#{prefix}[<mysql_user>[:<mysql_password>]@]<mysql_host>[:<mysql_port>]
 #{prefix}[<database>] [-e <remaining_args_as_input>]
 
   If -ssh is used, a SSH tunnel is established before trying to
@@ -180,14 +189,15 @@ USAGE
     exit 1
 end
 
-(mysql_host, mysql_user, mysql_password) = split_login(ARGV.shift)
-mysql_password ||= get_password("#{mysql_host}@#{mysql_host} MySQL password: ")
+(mysql_host, mysql_user, mysql_password, mysql_port) = split_login(ARGV.shift)
+mysql_password ||= get_password("#{mysql_user}@#{mysql_host} MySQL password: ")
 real_mysql_host = mysql_host
 
 if ssh_host
     # randomly pick a tcp port above 1024
+    remote_mysql_port = mysql_port || 3306
     mysql_port = rand(0xffff-1025) + 1025
-else
+elsif mysql_port.nil?
     mysql_port = 3306
 end
 
@@ -227,20 +237,35 @@ end
 
 MySQLResults.max_rows ||= batch_output ? 5000 : 1000
 
-ssh_enabled = false
-
 if ssh_host
 
     # might need to open an idle channel here so server doesn't close on
     # us...or just loop reconnection here in the thread...
 
-    port_opened = false
-    getting_password = false
     password_retry_cnt = 0
 
-    puts "SSH #{ssh_user}#{ssh_user ? '@' : ''}#{ssh_host}..." unless batch_input
+    unless batch_input
+        print "SSH #{ssh_user}#{ssh_user ? '@' : ''}#{ssh_host}..."
+        $stdout.flush
+    end
+
+    # we have to run mysql in a separate process due to the blocking
+    # nature of its calls interfering with the pure ruby ssh
+    # calls...so we'll run ssh in the background since its only
+    # purpose is to forward us in for accessing the mysql server
+
+    # we'll use a poor-man's ipc to determine when the ssh process is
+    # ready
+    ipc_fn = File.join(Dir.tmpdir, "rsql_ssh_#{$$}.pid")
+
     ssh = nil
-    ssh_thread = Thread.new do
+    ssh_pid = Process.fork do
+        File.open(ipc_fn,'w'){|f| f.puts('start')}
+        ssh_enabled = false
+        Signal.trap('INT') do
+            $stderr.puts 'Shutting down...'
+            ssh_enabled = false
+        end
         opts = {:timeout => 15}
         opts[:config] = ssh_config if ssh_config
         if verbose
@@ -254,14 +279,14 @@ if ssh_host
             opts[:password] = ssh_password if ssh_password
             ssh = Net::SSH.start(ssh_host, ssh_user, opts)
             ssh_enabled = true
+            printf "connected (#{$$})..."
+            $stdout.flush
         rescue Net::SSH::AuthenticationFailed
             if 2 < password_retry_cnt
                 $stderr.puts 'Permission denied. Giving up.'
             else
                 $stderr.puts 'Permission denied, please try again.' if ssh_password
-                getting_password = true
                 ssh_password = get_password("#{ssh_user}@#{ssh_host} SSH password: ")
-                getting_password = false
                 unless ssh_password.empty?
                     password_retry_cnt += 1
                     retry
@@ -269,39 +294,25 @@ if ssh_host
             end
         end
         if ssh_enabled
-            ssh.forward.local(mysql_port, mysql_host, 3306)
-            port_opened = true
+            ssh.forward.local(mysql_port, mysql_host, remote_mysql_port)
+            puts(verbose ? "ready (#{mysql_port} => #{remote_mysql_port})" : 'ready')
+            File.open(ipc_fn,'w'){|f| f.puts('ready')}
             ssh.loop(1) { ssh_enabled }
         end
+        File.open(ipc_fn,'w'){|f| f.puts('fail')}
     end
 
-    15.times do
-        break if !ssh_thread.alive? || (ssh_enabled && port_opened)
-        while getting_password
-            # give them extra time
-            sleep(1)
-        end
+    ipc_state = ''
+    60.times do
         sleep(1)
+        File.open(ipc_fn,'r'){|f| ipc_state = f.gets.strip}
+        break if ipc_state == 'ready' || ipc_state == 'fail'
     end
 
-    unless ssh_enabled
+    File.unlink(ipc_fn)
+
+    unless ipc_state == 'ready'
         $stderr.puts "failed to connect to #{ssh_host} SSH host"
-        begin
-            ssh_thread.join
-        rescue Exception => ex
-            $stderr.puts("  => #{ex.message} (#{ex.class})")
-        end
-        exit 1
-    end
-
-    unless port_opened
-        $stderr.puts("failed to forward #{mysql_port}:#{mysql_host}:3306 via #{ssh_host} " \
-                     "ssh host in 15 seconds")
-        begin
-            ssh_thread.join
-        rescue Exception => ex
-            $stderr.puts("  => #{ex.message}: #{ex.class}")
-        end
         exit 1
     end
 
@@ -309,16 +320,24 @@ if ssh_host
     mysql_host = '127.0.0.1'
 end
 
-puts "MySQL #{mysql_user}@#{real_mysql_host}..." unless batch_input
+unless batch_input
+    print "MySQL #{mysql_user}@#{real_mysql_host}..."
+    $stdout.flush
+end
+
+mysql_conn = "#{mysql_host}:#{remote_mysql_port || mysql_port}"
+
 begin
     MySQLResults.conn = Mysql.new(mysql_host, mysql_user, mysql_password,
                                   MySQLResults.database_name, mysql_port)
+    puts 'connected'
 rescue Mysql::Error => ex
     if ex.message.include?('Client does not support authentication')
-        $stderr.puts "failed to connect to #{mysql_host} mysql server: unknown credentials?"
+        $stderr.puts "failed to connect to #{mysql_conn} mysql server: unknown credentials?"
     else
-        $stderr.puts "failed to connect to #{mysql_host} mysql server: #{ex.message}"
+        $stderr.puts "failed to connect to #{mysql_conn} mysql server: #{ex.message}"
     end
+    $stderr.puts ex.backtrace if verbose
     exit 1
 rescue NoMethodError
     # this happens when mysql tries to read four bytes and assume it
@@ -326,10 +345,12 @@ rescue NoMethodError
     # because the connect succeeds due to the SSH forwarded port but
     # then there isn't anybody connected on the remote side of the
     # proxy
-    $stderr.puts "failed to connect to #{mysql_host} mysql server"
+    $stderr.puts "failed to connect to #{mysql_conn} mysql server"
+    $stderr.puts ex.backtrace if verbose
     exit 1
 rescue Exception => ex
-    $stderr.puts "failed to connect to #{mysql_host} mysql server: #{ex.message} (#{ex.class})"
+    $stderr.puts "failed to connect to #{mysql_conn} mysql server: #{ex.message} (#{ex.class})"
+    $stderr.puts ex.backtrace if verbose
     exit 1
 end
 
@@ -417,7 +438,6 @@ unless MySQLResults.conn.nil?
 end
 
 sleep(0.3)
-ssh_enabled = false
 
 if Readline::HISTORY.any?
     if 100 < Readline::HISTORY.size
@@ -428,6 +448,7 @@ if Readline::HISTORY.any?
     File.open(history_fn, 'w') {|f| YAML.dump(Readline::HISTORY.to_a, f)}
 end
 
-if ssh_thread
-    safe_timeout(ssh_thread, :join, 'SSH')
+if ssh_pid && 0 <= ssh_pid
+    Process.kill('INT', ssh_pid)
+    Process.waitpid(ssh_pid)
 end
