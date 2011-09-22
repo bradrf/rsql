@@ -263,7 +263,7 @@ if ssh_host
         File.open(ipc_fn,'w'){|f| f.puts('start')}
         ssh_enabled = false
         Signal.trap('INT') do
-            $stderr.puts 'Shutting down...'
+            $stderr.puts 'Shutting down...' unless batch_input
             ssh_enabled = false
         end
         opts = {:timeout => 15}
@@ -279,7 +279,7 @@ if ssh_host
             opts[:password] = ssh_password if ssh_password
             ssh = Net::SSH.start(ssh_host, ssh_user, opts)
             ssh_enabled = true
-            printf "connected (#{$$})..."
+            printf "connected (#{$$})..." unless batch_input
             $stdout.flush
         rescue Net::SSH::AuthenticationFailed
             if 2 < password_retry_cnt
@@ -295,7 +295,9 @@ if ssh_host
         end
         if ssh_enabled
             ssh.forward.local(mysql_port, mysql_host, remote_mysql_port)
-            puts(verbose ? "ready (#{mysql_port} => #{remote_mysql_port})" : 'ready')
+            unless batch_input
+                puts(verbose ? "ready (#{mysql_port} => #{remote_mysql_port})" : 'ready')
+            end
             File.open(ipc_fn,'w'){|f| f.puts('ready')}
             ssh.loop(1) { ssh_enabled }
         end
@@ -330,7 +332,7 @@ mysql_conn = "#{mysql_host}:#{remote_mysql_port || mysql_port}"
 begin
     MySQLResults.conn = Mysql.new(mysql_host, mysql_user, mysql_password,
                                   MySQLResults.database_name, mysql_port)
-    puts 'connected'
+    puts 'connected' unless batch_input
 rescue Mysql::Error => ex
     if ex.message.include?('Client does not support authentication')
         $stderr.puts "failed to connect to #{mysql_conn} mysql server: unknown credentials?"

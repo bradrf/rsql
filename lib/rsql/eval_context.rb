@@ -213,6 +213,8 @@ module RSQL
         # Convert a binary string value into a hexadecimal string.
         #
         def to_hexstr(bin, limit=@hexstr_limit, prefix='0x')
+            return bin if bin.nil?
+
             cnt = 0
             str = prefix << bin.gsub(/./m) do |ch|
                 if limit
