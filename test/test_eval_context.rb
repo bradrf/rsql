@@ -18,14 +18,17 @@ class TestEvalContext < Test::Unit::TestCase
     include RSQL
 
     def setup
-        @conn = MySQLResults.conn = mock('Mysql')
+        @conn = mock('Mysql')
+        @conn.expects(:list_dbs).returns([])
         @conn.expects(:query).with(instance_of(String)).returns(nil)
         @conn.expects(:affected_rows).returns(0)
+        MySQLResults.conn = @conn
         @ctx = EvalContext.new
         @ctx.load(File.join(File.dirname(__FILE__),'..','example.rsqlrc'))
     end
 
     def test_load
+        @conn.expects(:list_dbs).returns([])
         orig = $stdout
         $stdout = out = StringIO.new
         @ctx.safe_eval('reload', nil, out)
@@ -108,7 +111,6 @@ class TestEvalContext < Test::Unit::TestCase
     end
 
     def test_complete
-        @conn.expects(:list_dbs).returns([])
         assert_equal(18, @ctx.complete('').size)
         assert_equal(['version'], @ctx.complete('v'))
         assert_equal(['.version'], @ctx.complete('.v'))

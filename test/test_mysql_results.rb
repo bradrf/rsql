@@ -22,9 +22,11 @@ class TestMySQLResults < Test::Unit::TestCase
     end
 
     def test_databases
-        assert_equal(nil, MySQLResults.databases)
+        assert_equal([], MySQLResults.databases)
         conn = mock('Mysql')
         conn.expects(:list_dbs).returns(['accounts'])
+        conn.expects(:select_db)
+        conn.expects(:list_tables).returns([])
         MySQLResults.conn = conn
         assert_equal(['accounts'], MySQLResults.databases)
     end
@@ -34,31 +36,37 @@ class TestMySQLResults < Test::Unit::TestCase
         MySQLResults.reset_cache
 
         conn = mock('Mysql')
+        conn.expects(:list_dbs).returns(['accounts'])
+        conn.expects(:select_db)
         conn.expects(:list_tables).returns(['users','groups'])
         MySQLResults.conn = conn
-        assert_equal(['groups','users'], MySQLResults.tables)
-        MySQLResults.reset_cache
 
-        conn.expects(:list_tables).with(instance_of(String)).returns(['prefs'])
-        assert_equal(['prefs'], MySQLResults.tables('accounts'))
+        assert_equal([], MySQLResults.tables)
+        MySQLResults.database_name = 'accounts'
+        assert_equal(['groups','users'], MySQLResults.tables)
+        assert_equal(['groups','users'], MySQLResults.tables('accounts'))
     end
 
     def test_complete
         assert_equal([], MySQLResults.complete(nil))
 
         conn = mock('Mysql')
-        conn.expects(:list_dbs).returns(['accounts','devices','locations'])
+        conn.expects(:list_dbs).returns(['Accounts','Devices','Locations'])
+        conn.expects(:select_db).times(3)
+        tbls = sequence(:tbls)
+        conn.expects(:list_tables).in_sequence(tbls).returns(['Prefs','Names'])
+        conn.expects(:list_tables).in_sequence(tbls).returns(['IPs'])
+        conn.expects(:list_tables).in_sequence(tbls).returns(['Street','City','State'])
         MySQLResults.conn = conn
 
-        assert_equal(['accounts','devices','locations'], MySQLResults.complete(''))
-        assert_equal(['accounts'], MySQLResults.complete('a'))
+        assert_equal(['Accounts','Devices','Locations'], MySQLResults.complete(''))
+        assert_equal(['Accounts'], MySQLResults.complete('a'))
 
-        MySQLResults.database_name = 'accounts'
-        conn.expects(:list_tables).returns(['prefs','names'])
-        assert_equal(['devices','locations','names','prefs'], MySQLResults.complete(''))
-        assert_equal(['names'], MySQLResults.complete('n'))
+        MySQLResults.database_name = 'Accounts'
+        assert_equal(['Devices','Locations','Names','Prefs'], MySQLResults.complete(''))
+        assert_equal(['Names'], MySQLResults.complete('n'))
 
-        assert_equal(['accounts.names','accounts.prefs'], MySQLResults.complete('accounts.'))
+        assert_equal(['Accounts.Names','Accounts.Prefs'], MySQLResults.complete('accounts.'))
     end
 
     def test_query
@@ -79,6 +87,7 @@ class TestMySQLResults < Test::Unit::TestCase
         res.expects(:fetch_row).in_sequence(rows).returns(nil)
 
         conn = mock('Mysql')
+        conn.expects(:list_dbs).returns([])
         conn.expects(:query).with(instance_of(String)).returns(res)
         conn.expects(:affected_rows).returns(1)
         MySQLResults.conn = conn

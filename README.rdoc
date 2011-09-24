@@ -77,14 +77,14 @@ the colon and the at sign):
 
   rsql root:@127.0.0.1
 
-Connect as the "readonly" user to the "internal.database.com" host's
-MySQL server after establishing a SSH tunnel to the
+Connect as the "readonly" user to the "internal.database.acme.com"
+host's MySQL server after establishing a SSH tunnel to the
 "external.acme.com" gateway. In this case, we are either expecting
 that our SSH configuration is set up with the right user name. Because
 we did not provide a password for MySQL, one will be obtained directly
 from the console (without echoing the characters typed):
 
-  rsql -ssh external.acme.com readonly@database.acme.com
+  rsql -ssh external.acme.com readonly@internal.database.acme.com
 
 == GETTING STARTED
 

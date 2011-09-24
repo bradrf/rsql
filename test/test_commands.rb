@@ -21,7 +21,9 @@ class TestCommands < Test::Unit::TestCase
         @orig_stdout = $stdout
         $stdout = @strout = StringIO.new
         @ctx = EvalContext.new
-        @conn = MySQLResults.conn = mock('Mysql')
+        @conn = mock('Mysql')
+        @conn.expects(:list_dbs).returns([])
+        MySQLResults.conn = @conn
     end
 
     def teardown

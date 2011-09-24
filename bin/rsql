@@ -389,7 +389,7 @@ cmd_thread = Thread.new do
                     break
                 end
                 input << str
-                break if input =~ /([^\\];|\\G)\s*$/
+                break if input =~ /([^\\];|\\G)\s*$/ || input =~ /^\s*use\s+\w+\s*$/
                 # make sure we separate the lines with some whitespace if
                 # they didn't
                 input << ' ' unless str =~ /\s$/

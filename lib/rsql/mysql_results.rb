@@ -37,7 +37,7 @@ module RSQL
         @@field_separator = ' '
         @@max_rows        = 1000
         @@database_name   = nil
-        @@databases       = nil
+        @@name_cache     = {}
 
         class MaxRowsException < RangeError
             def initialize(rows, max)
@@ -49,13 +49,36 @@ module RSQL
 
         class << self
 
+            # Get the underlying MySQL connection object in use.
+            #
             def conn; @@conn; end
-            def conn=(conn); @@conn = conn; end
 
+            # Set the underlying MySQL connection object to use which
+            # implicitly resets the name cache.
+            #
+            def conn=(conn)
+                @@conn = conn
+                reset_cache
+            end
+
+            # Get the field separator to use when writing rows in
+            # columns.
+            #
             def field_separator; @@field_separator; end
+
+            # Set the field separator to use when writing rows in
+            # columns.
+            #
             def field_separator=(sep); @@field_separator = sep; end
 
+            # Get the maximum number of rows to process before
+            # throwing a MaxRowsException.
+            #
             def max_rows; @@max_rows; end
+
+            # Set the maximum number of rows to process before
+            # throwing a MaxRowsException.
+            #
             def max_rows=(cnt); @@max_rows = cnt; end
 
             # Get the name of the current database in use.
@@ -69,72 +92,72 @@ module RSQL
             # Get the list of databases available.
             #
             def databases
-                if @@conn && @@databases.nil?
-                    @@databases = @@conn.list_dbs.sort
-                end
-                @@databases
+                @@name_cache.keys.sort
             end
 
-            # Force the table cache to be reread on the next request
-            # for tables.
-            #
-            def reset_cache
-                @@databases       = nil
-                @@last_table_list = Hash.new{|h,k| h[k] = [Time.at(0), []]}
-            end
-
-            # Get the list of tables available (if a database is
-            # selected) at most once every ten seconds.
+            # Get the list of tables available for the current
+            # database or a specific one.
             #
             def tables(database=@@database_name)
-                now = Time.now
-                (last, tnames) = @@last_table_list[database]
-                if last + 10 < now
-                    begin
-                        if @@conn
-                            if database && database != @@database_name
-                                tnames = @@conn.list_tables("FROM #{database}").sort
-                            else
-                                tnames = @@conn.list_tables.sort
-                            end
+                @@name_cache[database] || []
+            end
+
+            # Force the database and table names cache to be (re)loaded.
+            #
+            def reset_cache
+                @@name_cache = {}
+                begin
+                    if @@conn
+                        @@conn.list_dbs.each do |db_name|
+                            @@conn.select_db(db_name)
+                            @@name_cache[db_name] = @@conn.list_tables.sort
                         end
-                    rescue Mysql::Error => ex
-                        tnames = []
                     end
-                    @@last_table_list[database] = [now, tnames]
+                rescue Mysql::Error => ex
+                ensure
+                    if @@conn && @@database_name
+                        @@conn.select_db(@@database_name)
+                    end
                 end
-                tnames
             end
 
             # Provide a list of tab completions given the prompted
-            # value.
+            # case-insensitive value.
             #
             def complete(str)
                 return [] unless @@conn
+
+                ret = []
 
                 # offer table names from a specific database
                 if str =~ /^([^.]+)\.(.*)$/
                     db = $1
                     tb = $2
-                    ret = tables(db).collect do |n|
-                        if n.downcase.start_with?(tb)
-                            "#{db}.#{n}"
-                        else
-                            nil
+                    @@name_cache.each do |db_name, tnames|
+                        if db.casecmp(db_name) == 0
+                            tnames.each do |n|
+                                if m = n.match(/^(#{tb})/i)
+                                    ret << "#{db_name}.#{n}"
+                                end
+                            end
+                            break
                         end
                     end
-                    ret.compact!
                 else
-                    ret = databases.select{|n| n != @@database_name && n.downcase.start_with?(str)}
-                    if @@database_name
-                        # if we've selected a db then we want to offer
-                        # completions for other dbs as well as tables for
-                        # the currently selected db
-                        ret += tables.select{|n| n.downcase.start_with?(str)}
+                    @@name_cache.each do |db_name, tnames|
+                        if db_name == @@database_name
+                            tnames.each do |n|
+                                if m = n.match(/^(#{str})/i)
+                                    ret << n
+                                end
+                            end
+                        elsif m = db_name.match(/^(#{str})/i)
+                            ret << db_name
+                        end
                     end
                 end
 
-                return ret
+                return ret.sort
             end
 
             # Get results from a query.
@@ -199,9 +222,6 @@ module RSQL
             end
 
         end # class << self
-
-        # init the cache
-        reset_cache
 
         ########################################
 

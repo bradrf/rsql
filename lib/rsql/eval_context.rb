@@ -101,6 +101,7 @@ module RSQL
         end
 
         def reload
+            MySQLResults.reset_cache
             @loaded_fns.each{|fn| self.load(fn, false)}
             puts "loaded: #{@loaded_fns.inspect}"
         end
@@ -191,6 +192,7 @@ module RSQL
             end
 
             ret  = MySQLResults.complete(str)
+
             ret += @registrations.keys.sort_by{|sym|sym.to_s}.collect do |sym|
                 name = sym.to_s
                 if name.start_with?(str)
