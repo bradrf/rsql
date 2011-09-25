@@ -37,7 +37,6 @@ module RSQL
             @verbose      = verbose
             @hexstr_limit = HEXSTR_LIMIT
             @results      = nil
-            @last_query   = nil
 
             @loaded_fns         = []
             @init_registrations = []
@@ -45,29 +44,29 @@ module RSQL
 
             @registrations = {
                 :version => Registration.new('version', [], {},
-                                             method(:version),
-                                             'version',
-                                             'RSQL version information.'),
+                    method(:version),
+                    'version',
+                    'Version information about RSQL, the client, and the server.'),
                 :reload => Registration.new('reload', [], {},
-                                            method(:reload),
-                                            'reload',
-                                            'Reload the rsqlrc file.'),
+                    method(:reload),
+                    'reload',
+                    'Reload the rsqlrc file.'),
                 :desc => Registration.new('desc', [], {},
-                                          method(:desc),
-                                          'desc',
-                                          'Describe the content of a recipe.'),
-                :last_query => Registration.new('last_query', [], {},
-                                                Proc.new{puts(@last_query)},
-                                                'last_query',
-                                                'Print the last query made from generated results.'),
+                    method(:desc),
+                    'desc',
+                    'Describe the content of a recipe.'),
+                :history => Registration.new('history', [], {},
+                    method(:history),
+                    'history(cnt=1)',
+                    'Print recent queries made (request a count or use :all for entire list).'),
                 :set_max_rows => Registration.new('set_max_rows', [], {},
-                                                  Proc.new{|r| MySQLResults.max_rows = r},
-                                                  'set_max_rows',
-                                                  'Set the maximum number of rows to process.'),
+                    Proc.new{|r| MySQLResults.max_rows = r},
+                    'set_max_rows',
+                    'Set the maximum number of rows to process.'),
                 :max_rows => Registration.new('max_rows', [], {},
-                                              Proc.new{MySQLResults.max_rows},
-                                              'max_rows',
-                                              'Get the maximum number of rows to process.'),
+                    Proc.new{MySQLResults.max_rows},
+                    'max_rows',
+                    'Get the maximum number of rows to process.'),
             }
         end
 
@@ -176,8 +175,6 @@ module RSQL
                 $stdout = orig_stdout if stdout
             end
 
-            @last_query = value if String === value
-
             return value
         end
 
@@ -264,7 +261,10 @@ module RSQL
                 return nil
             end
 
-            def params(block)
+            # Attempt to locate the parameters of a given block by
+            # searching its source.
+            #
+            def params(name, block)
                 params = ''
 
                 if block.arity != 0 && block.arity != -1 &&
@@ -273,7 +273,7 @@ module RSQL
                     lineno = $2.to_i
 
                     if fn == '(eval)'
-                        $stderr.puts 'refusing to search an eval block'
+                        $stderr.puts "refusing to search an eval block for :#{name}"
                         return params
                     end
 
@@ -288,7 +288,7 @@ module RSQL
                                 # give up if no start found within 20
                                 # lines
                                 break if lineno + 20 < i
-                                if m = line.match(/(\{|do)(.*)$/)
+                                if m = line.match(/(\{|do\b)(.*)$/)
                                     # adjust line to be the remainder
                                     # after the start
                                     line = m[2]
@@ -308,7 +308,7 @@ module RSQL
                             # this block doesn't have params...even
                             # though arity says it should
                             next if line.match(/^\s*$/)
-                            $stderr.puts 'unable to locate params'
+                            $stderr.puts "unable to locate params for :#{name}"
                             break
                         end
                     end
@@ -401,6 +401,13 @@ module RSQL
                 MySQLResults.query(content, self, *args)
             end
 
+            def history(cnt=1)
+                if h = MySQLResults.history(cnt)
+                    h.each{|q| puts '', q}
+                end
+                nil
+            end
+
             # Exactly like register below except in addition to registering as
             # a usable call for later, we will also use these as soon as we
             # have a connection to MySQL.
@@ -438,7 +445,7 @@ module RSQL
                     args = []
                 else
                     source = nil
-                    usage << params(block)
+                    usage << params(name, block)
                 end
 
                 @registrations[sym] = Registration.new(name, args, bangs, block, usage, desc, source)

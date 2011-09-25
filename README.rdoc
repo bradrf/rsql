@@ -14,13 +14,13 @@ to an intermediary host for access to the SQL server.
   gem install rsql
 
 Alternatively, RSQL can be downloaded as a tar.gz or zip and run
-directly from within the unpacked source directory. The only
-requirement is that SSH functionality will be disabled unless the
-Net::SSH Ruby library is installed and available.
+directly from within the unpacked source directory as long as the
+MySQL Ruby library is available. SSH functionality will be disabled
+unless the Net::SSH Ruby library is also installed and available.
 
 == USAGE
 
-RSQL is invoked from the comamnd line using:
+RSQL is invoked from the command line using:
 
   rsql [<options>] <mysql_host> [<database>] [-e [<query>]]
 
@@ -40,7 +40,7 @@ RSQL is invoked from the comamnd line using:
   Override the maximum number of rows to process.
 
 -batch _field_separator_::
-  Run in batch mode using the separator specifed (e.g. a /t will
+  Run in batch mode using the separator specified (e.g. a /t will
   separate fields with a tab character).
 
 -ssh _ssh_host_::
@@ -79,10 +79,10 @@ the colon and the at sign):
 
 Connect as the "readonly" user to the "internal.database.acme.com"
 host's MySQL server after establishing a SSH tunnel to the
-"external.acme.com" gateway. In this case, we are either expecting
-that our SSH configuration is set up with the right user name. Because
-we did not provide a password for MySQL, one will be obtained directly
-from the console (without echoing the characters typed):
+"external.acme.com" gateway. In this case, we are expecting that our
+SSH configuration is set up with the right user name. Because we did
+not provide a password for MySQL, one will be obtained directly from
+the console (without echoing the characters typed):
 
   rsql -ssh external.acme.com readonly@internal.database.acme.com
 

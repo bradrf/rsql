@@ -65,9 +65,9 @@ class TestEvalContext < Test::Unit::TestCase
     end
 
     def test_params
-        val = @ctx.safe_eval('params(@registrations[:fill_table].block)', nil, nil)
+        val = @ctx.safe_eval('params("ft", @registrations[:fill_table].block)', nil, nil)
         assert_equal('', val)
-        val = @ctx.safe_eval('params(@registrations[:save_values].block)', nil, nil)
+        val = @ctx.safe_eval('params("sv", @registrations[:save_values].block)', nil, nil)
         assert_equal('(fn)', val)
     end
 

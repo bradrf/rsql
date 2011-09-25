@@ -37,7 +37,9 @@ module RSQL
         @@field_separator = ' '
         @@max_rows        = 1000
         @@database_name   = nil
-        @@name_cache     = {}
+        @@name_cache      = {}
+        @@history         = []
+        @@max_history     = 10
 
         class MaxRowsException < RangeError
             def initialize(rows, max)
@@ -88,6 +90,24 @@ module RSQL
             # Set the name of the current database in use.
             #
             def database_name=(database); @@database_name = database; end
+
+            # Get a list of the most recent query strings.
+            #
+            def history(cnt=:all)
+                if Integer === cnt 
+                    @@history[-cnt,cnt]
+                else
+                    @@history
+                end
+            end
+
+            # Get the maximum number of historical entries to retain.
+            #
+            def get_max_history; @@max_history; end
+
+            # Set the maximum number of historical entries to retain.
+            #
+            def set_max_history=(count); @@max_history = count; end
 
             # Get the list of databases available.
             #
@@ -163,6 +183,9 @@ module RSQL
             # Get results from a query.
             #
             def query(sql, eval_context, raw=false, max_rows=@@max_rows)
+                @@history.shift if @@max_history <= @@history.size 
+                @@history << sql
+
                 start   = Time.now.to_f
                 results = @@conn.query(sql)
                 elapsed = Time.now.to_f - start.to_f

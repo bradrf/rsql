@@ -124,7 +124,7 @@ SELECT name, value FROM #{@rsql_table} WHERE #{val} <= value
 # So the command in our history is the recipe and not the query. To
 # see the query the EvalContext has a recipe ready for us:
 #
-#   rsql> .last_query;
+#   rsql> .history;
 #
 register :bad_query, %q{
 SELECT name, value FROM #{@rsql_table} WHERE valu < 10000
@@ -221,6 +221,10 @@ end
 # this, the use of EvalContext's safe_save method is invoked which
 # serializes our object so that we may later decided to run some post
 # processing on the content.
+#
+# Inspect the YAML content written out:
+#
+#   rsql> .puts IO.read('myobj.yml');
 #
 register :save_values, :desc => 'Save results from a query into a file.' do |fn|
     myobj = {}
