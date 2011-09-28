@@ -357,7 +357,7 @@ module RSQL
                             next unless ending || i == lineno
                             source << line
                             unless ending
-                                unless m = line.match(/\{|do/)
+                                unless m = line.match(/\{|do\b/)
                                     $stderr.puts "unable to locate block beginning at #{fn}:#{lineno}"
                                     return
                                 end
