@@ -260,7 +260,7 @@ module RSQL
             # we set this here so that (a) it occurs _after_ we are
             # successful and so we can show an appropriate messge in a
             # displayer
-            if @sql.match(/use\s+(\S+)/)
+            if @sql.match(/use\s+(\S+)/i)
                 @database_changed = true
                 @@database_name = $1
             end

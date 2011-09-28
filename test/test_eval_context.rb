@@ -28,7 +28,7 @@ class TestEvalContext < Test::Unit::TestCase
     end
 
     def test_load
-        @conn.expects(:list_dbs).returns([])
+#        @conn.expects(:list_dbs).returns([])
         orig = $stdout
         $stdout = out = StringIO.new
         @ctx.safe_eval('reload', nil, out)
@@ -97,8 +97,10 @@ class TestEvalContext < Test::Unit::TestCase
         assert_equal('', out.string)
         assert_equal('refusing to describe the version method', err.string.chomp)
 
+        err.string = ''
         out.string = ''
         val = @ctx.safe_eval('desc :cleanup_example', nil, out)
+        assert_equal('', err.string)
         assert_equal('DROP TEMPORARY TABLE IF EXISTS #{@rsql_table}', out.string.strip)
 
         out.string = ''

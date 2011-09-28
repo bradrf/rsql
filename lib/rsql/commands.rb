@@ -64,7 +64,7 @@ module RSQL
                     sep = nil
                 end
 
-                if esc.any?
+                unless esc.empty?
                     esc << match
                     match = esc
                     esc = ''
@@ -177,7 +177,7 @@ module RSQL
                     displayer = @default_displayer
                 end
 
-                if content.any?
+                unless content.empty?
                     @cmds << Command.new(content, bangs, declarator, displayer)
                     return true
                 end

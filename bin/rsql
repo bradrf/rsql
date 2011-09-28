@@ -428,6 +428,18 @@ Signal.trap('INT') do
     cmd_thread.kill
 end
 
+Signal.trap('CHLD') do
+    $stderr.puts "SSH child (#{ssh_pid}) stopped--shutting down..."
+    if cmd_thread[:running] && MySQLResults.conn
+        $stderr.puts 'Interrupting MySQL query...'
+        safe_timeout(MySQLResults.conn, :close, 'MySQL')
+        MySQLResults.conn = nil
+    end
+    cmd_thread[:shutdown] = true
+    sleep(0.3)
+    cmd_thread.kill
+end
+
 begin
     cmd_thread.join
 rescue Exception => ex
@@ -451,6 +463,11 @@ if Readline::HISTORY.any?
 end
 
 if ssh_pid && 0 <= ssh_pid
-    Process.kill('INT', ssh_pid)
-    Process.waitpid(ssh_pid)
+    begin
+        Process.kill('INT', ssh_pid)
+        Process.waitpid(ssh_pid)
+    rescue Exception => ex
+        $stderr.puts ex.message
+        $stderr.puts ex.backtrace if verbose
+    end
 end

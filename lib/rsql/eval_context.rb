@@ -100,7 +100,6 @@ module RSQL
         end
 
         def reload
-            MySQLResults.reset_cache
             @loaded_fns.each{|fn| self.load(fn, false)}
             puts "loaded: #{@loaded_fns.inspect}"
         end
@@ -108,7 +107,7 @@ module RSQL
         def bang_eval(field, val)
             if bang = @bangs[field]
                 begin
-                    val = Thread.new{ eval("$SAFE=2;#{bang}(val)") }.value
+                    val = Thread.new{ eval("#{bang}(val)") }.value
                 rescue Exception => ex
                     $stderr.puts(ex.message, ex.backtrace.first)
                 end
@@ -153,7 +152,7 @@ module RSQL
                 # that we have file/line info, we need to rescue their
                 # exceptions inside the evaluation
                 th = Thread.new do
-                    eval('$SAFE=2;begin;' << content << %q{
+                    eval('begin;' << content << %q{
                       rescue Exception => ex
                         if @verbose
                             $stderr.puts("#{ex.class}: #{ex.message}", ex.backtrace)
@@ -223,7 +222,7 @@ module RSQL
                     end
                     limit -= 1
                 end
-                '%02x' % ch[0]
+                '%02x' % ch.bytes.first
             end
 
             if limit && limit < 1 && 0 < cnt
@@ -365,6 +364,7 @@ module RSQL
                                 ending = m[0] == '{' ? '\}' : 'end'
                                 next
                             end
+
                             if m = line.match(/^#{ending}/)
                                 found = true
                                 break
@@ -379,7 +379,7 @@ module RSQL
                     end
                 end
 
-                if reg.source && reg.source.any?
+                if reg.source && !reg.source.empty?
                     puts reg.source
                 else
                     $stderr.puts "unable to locate body for #{sym}"
@@ -440,7 +440,7 @@ module RSQL
                     argstr = args.join(',')
                     usage << "(#{argstr})" unless argstr.empty?
 
-                    blockstr = %{$SAFE=2;lambda{|#{argstr}|%{#{sql}} % [#{argstr}]}}
+                    blockstr = %{lambda{|#{argstr}|%{#{sql}} % [#{argstr}]}}
                     block = Thread.new{ eval(blockstr) }.value
                     args = []
                 else

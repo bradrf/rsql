@@ -53,7 +53,7 @@ class TestCommands < Test::Unit::TestCase
 
         # make sure our logic to handle eval'd blocks with args works
         @strout.string = ''
-        cmds = Commands.new('. Proc.new{|a| p a} | @results.value.call(:fancy)', :display_by_column)
+        cmds = Commands.new('. Proc.new{|a| puts a.inspect} | @results.value.call(:fancy)', :display_by_column)
         cmds.run!(@ctx)
         assert_equal(':fancy', @strout.string.chomp)
     end
@@ -61,7 +61,7 @@ class TestCommands < Test::Unit::TestCase
     def test_multiple
         @conn.expects(:query).with('one thing').returns(nil)
         @conn.expects(:affected_rows).returns(1)
-        cmds = Commands.new('. "one thing" ; . p :hello', :display_by_column)
+        cmds = Commands.new('. "one thing" ; . puts :hello.inspect', :display_by_column)
         cmds.run!(@ctx)
         assert_match(/^QueryOK,1rowaffected\(\d+.\d+sec\):hello$/,
                      @strout.string.gsub(/\s+/,''))
