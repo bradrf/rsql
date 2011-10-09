@@ -59,7 +59,7 @@ else
     rc_fn = File.join(ENV['HOME'], ".#{bn}rc")
 end
 
-eval_context.load(rc_fn, false) if File.exists?(rc_fn)
+eval_context.load(rc_fn, :skip_init_registrations) if File.exists?(rc_fn)
 
 def get_password(prompt)
     STDOUT.print(prompt)

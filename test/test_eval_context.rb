@@ -27,9 +27,11 @@ class TestEvalContext < Test::Unit::TestCase
         @ctx.load(File.join(File.dirname(__FILE__),'..','example.rsqlrc'))
     end
 
-    def test_load
+    def test_reload
         orig = $stdout
         $stdout = out = StringIO.new
+        @conn.expects(:query).with(instance_of(String)).returns(nil).times(2)
+        @conn.expects(:affected_rows).returns(0).times(2)
         @ctx.safe_eval('reload', nil, out)
         assert_match(/loaded: .+?example.rsqlrc/, out.string)
     ensure
@@ -100,15 +102,18 @@ class TestEvalContext < Test::Unit::TestCase
         out.string = ''
         val = @ctx.safe_eval('desc :cleanup_example', nil, out)
         assert_equal('', err.string)
-        assert_equal('DROP TEMPORARY TABLE IF EXISTS #{@rsql_table}', out.string.strip)
+        assert_match(
+            /^\s*\[.+\/example.rsqlrc:\d+\]\s+DROP TEMPORARY TABLE IF EXISTS \#\{@rsql_table\}\s*$/,
+            out.string)
 
         out.string = ''
         val = @ctx.safe_eval('desc :to_report', nil, out)
-        lines = out.string.split($/)
-        assert_match(/^register .+ do$/, lines[0])
+        lines = out.string.split($/).select{|l|l.any?}
+        assert_match(/^\[.+\/example.rsqlrc:\d+\]$/, lines[0])
+        assert_match(/^register .+ do$/, lines[1])
         assert_match(/^\s+puts/, lines[-2])
         assert_match(/^end$/, lines[-1])
-        assert_equal(12, lines.size)
+        assert_equal(13, lines.size)
     end
 
     def test_complete

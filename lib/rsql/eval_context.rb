@@ -29,7 +29,8 @@ module RSQL
     #
     class EvalContext
 
-        Registration = Struct.new(:name, :args, :bangs, :block, :usage, :desc, :source)
+        Registration = Struct.new(:name, :args, :bangs, :block, :usage,
+                                  :desc, :source, :source_fn)
 
         HEXSTR_LIMIT = 32
 
@@ -80,7 +81,17 @@ module RSQL
             end
         end
 
-        def load(fn, init=true)
+        def load(fn, opt=nil)
+            # this should only be done after we have established a
+            # mysql connection, so this option allows rsql to load the
+            # init file immediately and then later make the init
+            # registration calls--we set this as an instance variable
+            # to allow for loaded files to call load again and yet
+            # still maintain the skip logic
+            if opt == :skip_init_registrations
+                reset_skipping = @skipping_init_registrations = true
+            end
+
             ret = Thread.new {
                 begin
                     eval(File.read(fn), binding, fn)
@@ -91,12 +102,22 @@ module RSQL
             }.value
 
             if Exception === ret
-                bt = ret.backtrace.collect{|line| line.start_with?(fn) ? line : nil}.compact
-                $stderr.puts("#{ret.class}: #{ret.message}", bt, '')
+                if @verbose
+                    $stderr.puts("#{ex.class}: #{ex.message}", ex.backtrace)
+                else
+                    bt = ret.backtrace.collect{|line| line.start_with?(fn) ? line : nil}.compact
+                    $stderr.puts("#{ret.class}: #{ret.message}", bt, '')
+                end
+                ret = false
             else
                 @loaded_fns << fn unless @loaded_fns.include?(fn)
-                call_init_registrations if init
+                call_init_registrations unless @skipping_init_registrations
+                ret = true
             end
+
+            @skipping_init_registrations = false if reset_skipping
+
+            return ret
         end
 
         def reload
@@ -316,6 +337,10 @@ module RSQL
                 return params
             end
 
+            # Similiar to the MySQL "desc" command, show the content
+            # of nearly any registered recipe including where it was
+            # sourced (e.g. what file:line it came from).
+            #
             def desc(sym)
                 unless Symbol === sym
                     $stderr.puts("must provide a Symbol--try prefixing it with a colon (:)")
@@ -345,6 +370,8 @@ module RSQL
                         $stderr.puts 'unable to describe body for an eval block'
                         return
                     end
+
+                    reg.source_fn = "#{fn}:#{lineno}"
 
                     File.open(fn) do |f|
                         source = ''
@@ -380,7 +407,7 @@ module RSQL
                 end
 
                 if reg.source && !reg.source.empty?
-                    puts reg.source
+                    puts '', "[#{reg.source_fn}]", '', reg.source
                 else
                     $stderr.puts "unable to locate body for #{sym}"
                 end
@@ -401,6 +428,9 @@ module RSQL
                 MySQLResults.query(content, self, *args)
             end
 
+            # Show the most recent queries made to the MySQL server in
+            # this session. Default is to show the last one.
+            #
             def history(cnt=1)
                 if h = MySQLResults.history(cnt)
                     h.each{|q| puts '', q}
@@ -422,6 +452,10 @@ module RSQL
             # sql with variable interpolation.
             #
             def register(sym, *args, &block) # :doc:
+                if m = caller.first.match(/^([^:]+:\d+)/)
+                    source_fn = m[1]
+                end
+
                 name = usage = sym.to_s
 
                 if Hash === args.last
@@ -434,7 +468,7 @@ module RSQL
                 desc = '' unless desc
 
                 if block.nil?
-                    source = args.pop
+                    source = args.pop.strip
                     sql = squeeze!(source.dup)
 
                     argstr = args.join(',')
@@ -448,7 +482,8 @@ module RSQL
                     usage << params(name, block)
                 end
 
-                @registrations[sym] = Registration.new(name, args, bangs, block, usage, desc, source)
+                @registrations[sym] = Registration.new(name, args, bangs, block, usage,
+                                                       desc, source, source_fn)
             end
 
             # Convert a list of values into a comma-delimited string,
