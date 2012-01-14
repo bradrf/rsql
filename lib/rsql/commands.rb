@@ -82,7 +82,11 @@ module RSQL
                             match_before_bang = nil
                             break
                         end
-                        new_bangs[key.strip] = val.to_sym
+                        if val.strip == 'nil'
+                            new_bangs[key.strip] = nil
+                        else
+                            new_bangs[key.strip] = val.to_sym
+                        end
                     end
                     next unless match_before_bang
                     match = match_before_bang

@@ -44,6 +44,7 @@ module RSQL
             @loaded_fns_state   = {}
             @init_registrations = []
             @bangs              = {}
+            @global_bangs       = {}
 
             @registrations = {
                 :version => Registration.new('version', [], {},
@@ -147,7 +148,20 @@ module RSQL
         end
 
         def bang_eval(field, val)
-            if bang = @bangs[field]
+            # allow individual bangs to override global ones, even if they're nil
+            if @bangs.key?(field)
+                bang = @bangs[field]
+            else
+                @global_bangs.each do |m,b|
+                    if (String === m && m == field.to_s) ||
+                        (Regexp === m && m.match(field.to_s))
+                        bang = b
+                        break
+                    end
+                end
+            end
+
+            if bang
                 begin
                     val = Thread.new{ eval("#{bang}(val)") }.value
                 rescue Exception => ex
@@ -469,6 +483,14 @@ EOF
                     h.each{|q| puts '', q}
                 end
                 nil
+            end
+
+            # Register bangs to evaluate on all displayers as long as a column
+            # match is located. Bang keys may be either exact string matches or
+            # regular expressions.
+            #
+            def register_global_bangs(bangs)
+                @global_bangs.merge!(bangs)
             end
 
             # Exactly like register below except in addition to registering as
