@@ -19,9 +19,16 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-module RSQL
+# The standard MySQL hooks block Ruby threads, this interface provides an
+# asynchronous query.
+#
+require 'mysqlplus'
 
-    require 'mysql'
+class Mysql
+    alias :query :async_query
+end
+
+module RSQL
 
     ########################################
     # A wrapper to make it easier to work with MySQL results (and prettier).

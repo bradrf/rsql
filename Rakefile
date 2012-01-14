@@ -44,7 +44,7 @@ spec = Gem::Specification.new do |s|
     s.version = rsql_version
     s.required_ruby_version = '>=1.8.0'
     s.add_dependency('net-ssh', '>=2.1.0')
-    s.add_dependency('mysql', '>=2.8.0')
+    s.add_dependency('mysqlplus', '>=0.1.2')
     s.add_development_dependency('mocha', '>=0.9.12')
     s.add_development_dependency('rake')
     s.add_development_dependency('rdoc')

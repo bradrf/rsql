@@ -24,8 +24,8 @@ module RSQL
     require 'time'
 
     ################################################################################
-    # This class wraps all dynamic evaluation and serves as the reflection
-    # class for adding methods dynamically.
+    # This class wraps all dynamic evaluation and serves as the reflection class
+    # for adding methods dynamically.
     #
     class EvalContext
 
@@ -35,11 +35,13 @@ module RSQL
         HEXSTR_LIMIT = 32
 
         def initialize(verbose=false)
+            @prompt       = nil
             @verbose      = verbose
             @hexstr_limit = HEXSTR_LIMIT
             @results      = nil
 
             @loaded_fns         = []
+            @loaded_fns_state   = {}
             @init_registrations = []
             @bangs              = {}
 
@@ -48,6 +50,10 @@ module RSQL
                     method(:version),
                     'version',
                     'Version information about RSQL, the client, and the server.'),
+                :help => Registration.new('help', [], {},
+                    method(:help),
+                    'help',
+                    'Show short syntax help.'),
                 :reload => Registration.new('reload', [], {},
                     method(:reload),
                     'reload',
@@ -71,6 +77,7 @@ module RSQL
             }
         end
 
+        attr_reader :prompt
         attr_accessor :bangs, :verbose
 
         def call_init_registrations
@@ -82,6 +89,9 @@ module RSQL
         end
 
         def load(fn, opt=nil)
+            @loaded_fns << fn unless @loaded_fns_state.key?(fn)
+            @loaded_fns_state[fn] = :loading
+
             # this should only be done after we have established a
             # mysql connection, so this option allows rsql to load the
             # init file immediately and then later make the init
@@ -102,6 +112,7 @@ module RSQL
             }.value
 
             if Exception === ret
+                @loaded_fns_state[fn] = :failed
                 if @verbose
                     $stderr.puts("#{ex.class}: #{ex.message}", ex.backtrace)
                 else
@@ -110,7 +121,7 @@ module RSQL
                 end
                 ret = false
             else
-                @loaded_fns << fn unless @loaded_fns.include?(fn)
+                @loaded_fns_state[fn] = :loaded
                 call_init_registrations unless @skipping_init_registrations
                 ret = true
             end
@@ -121,8 +132,18 @@ module RSQL
         end
 
         def reload
-            @loaded_fns.each{|fn| self.load(fn, false)}
-            puts "loaded: #{@loaded_fns.inspect}"
+            # some files may be loaded by other files, if so, we don't want to
+            # reload them again here
+            @loaded_fns.each{|fn| @loaded_fns_state[fn] = nil}
+            @loaded_fns.each{|fn| self.load(fn, :skip_init_registrations) if @loaded_fns_state[fn] == nil}
+
+            # load up the inits after all the normal registrations are ready
+            call_init_registrations
+
+            # report all the successfully loaded ones
+            loaded = []
+            @loaded_fns.each{|fn,state| loaded << fn if @loaded_fns_state[fn] == :loaded}
+            puts "loaded: #{loaded.inspect}"
         end
 
         def bang_eval(field, val)
@@ -421,6 +442,18 @@ module RSQL
                      "server:v#{MySQLResults.conn.server_info}"
             end
 
+            # Show a short amount of information about acceptable syntax.
+            #
+            def help            # :doc:
+                puts <<EOF
+
+Converting values on the fly:
+
+  rsql> select name, value from rsql_example ! value => humanize_bytes;
+
+EOF
+            end
+
             # Provide a helper utility in the event a registered
             # method would like to make its own queries.
             #
@@ -444,7 +477,7 @@ module RSQL
             #
             def register_init(sym, *args, &block) # :doc:
                 register(sym, *args, &block)
-                @init_registrations << sym
+                @init_registrations << sym unless @init_registrations.include?(sym)
             end
 
             # If given a block, allow the block to be called later, otherwise,

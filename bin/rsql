@@ -52,6 +52,9 @@ bn = File.basename($0, '.rb')
 
 eval_context = EvalContext.new
 
+# rewrite all double hyphen options into singles so both are supported
+ARGV.map!{|a| a.sub(/^--/,'-')}
+
 if i = ARGV.index('-rc')
     ARGV.delete_at(i)
     rc_fn = ARGV.delete_at(i)
@@ -146,13 +149,25 @@ end
 
 if i = ARGV.index('-ssh')
     require 'net/ssh'
+
     ARGV.delete_at(i)
+
     (ssh_host, ssh_user, ssh_password, ssh_port) = split_login(ARGV.delete_at(i))
+
+    default_config = File.join(ENV['HOME'], '.ssh', 'config')
+    if File.exists?(default_config)
+        ssh_cfghash = Net::SSH::Config.load(default_config, ssh_host)
+    end
+
+    if ssh_user.nil? || ssh_user.empty?
+        ssh_user = ssh_cfghash['user'] || ENV['USER'] || ENV['USERNAME']
+    end
 end
 
 if i = ARGV.index('-sshconfig')
     ARGV.delete_at(i)
     ssh_config = ARGV.delete_at(i)
+    ssh_cfghash = Net::SSH::Config.load(ssh_config, ssh_host)
 end
 
 if i = ARGV.index('-e')
@@ -167,7 +182,15 @@ if i = ARGV.index('-e')
     batch_input.strip!
 end
 
-if ARGV.size < 1
+show_usage = false
+ARGV.each do |a|
+    if a.start_with?('-')
+        $stderr.puts "unknown argument: #{a}"
+        show_usage = true
+    end
+end
+
+if ARGV.size < 1 || show_usage
     prefix = '        ' << ' ' * bn.size
     $stderr.puts <<USAGE
 
@@ -203,7 +226,8 @@ end
 
 MySQLResults.database_name = ARGV.shift
 
-unless $stdin.tty?
+if !$stdin.tty? && batch_input.nil?
+    # accept commands from stdin
     batch_input = $stdin.read.gsub(/\r?\n/,';')
 end
 
@@ -262,8 +286,9 @@ if ssh_host
     ssh_pid = Process.fork do
         File.open(ipc_fn,'w'){|f| f.puts('start')}
         ssh_enabled = false
-        Signal.trap('INT') do
-            $stderr.puts 'Shutting down...' unless batch_input
+        Signal.trap('INT', 'IGNORE')
+        Signal.trap('TERM') do
+            $stderr.puts 'Closing SSH connection...' unless batch_input
             ssh_enabled = false
         end
         opts = {:timeout => 15}
@@ -271,9 +296,7 @@ if ssh_host
         if verbose
             opts[:verbose] = :debug
             puts "SSH options: #{opts.inspect}"
-            if ssh_config
-                puts "SSH config: #{Net::SSH::Config.load(ssh_config, ssh_host).inspect}"
-            end
+            puts "SSH config: #{ssh_cfghash.inspect}"
         end
         begin
             opts[:password] = ssh_password if ssh_password
@@ -292,20 +315,44 @@ if ssh_host
                     retry
                 end
             end
-        end
-        if ssh_enabled
-            ssh.forward.local(mysql_port, mysql_host, remote_mysql_port)
-            unless batch_input
-                puts(verbose ? "ready (#{mysql_port} => #{remote_mysql_port})" : 'ready')
+        rescue Timeout::Error => ex
+            $stderr.puts ex.message
+        ensure
+            if ssh_enabled
+                ssh.forward.local(mysql_port, mysql_host, remote_mysql_port)
+                unless batch_input
+                    puts(verbose ? "ready (#{mysql_port} => #{remote_mysql_port})" : 'ready')
+                end
+                File.open(ipc_fn,'w'){|f| f.puts('ready')}
+                ssh.loop(1) { ssh_enabled }
             end
-            File.open(ipc_fn,'w'){|f| f.puts('ready')}
-            ssh.loop(1) { ssh_enabled }
+            File.open(ipc_fn,'w'){|f| f.puts('fail')}
         end
-        File.open(ipc_fn,'w'){|f| f.puts('fail')}
+    end
+
+    at_exit do
+        if ssh_pid && 0 <= ssh_pid
+            begin
+                Process.kill('TERM', ssh_pid)
+                killed = false
+                5.times do
+                    if Process.waitpid(ssh_pid, Process::WNOHANG)
+                        killed = true
+                        break
+                    end
+                    sleep 1
+                end
+                Process.kill('KILL', ssh_pid) unless killed
+            rescue Exception => ex
+                $stderr.puts ex.message
+                $stderr.puts ex.backtrace if verbose
+            end
+        end
+        File.unlink(ipc_fn) if File.exists?(ipc_fn)
     end
 
     ipc_state = ''
-    60.times do
+    15.times do
         sleep(1)
         File.open(ipc_fn,'r'){|f| ipc_state = f.gets.strip}
         break if ipc_state == 'ready' || ipc_state == 'fail'
@@ -314,6 +361,8 @@ if ssh_host
     File.unlink(ipc_fn)
 
     unless ipc_state == 'ready'
+        # give the child time to exit
+        sleep(0.5)
         $stderr.puts "failed to connect to #{ssh_host} SSH host"
         exit 1
     end
@@ -332,6 +381,7 @@ mysql_conn = "#{mysql_host}:#{remote_mysql_port || mysql_port}"
 begin
     MySQLResults.conn = Mysql.new(mysql_host, mysql_user, mysql_password,
                                   MySQLResults.database_name, mysql_port)
+    MySQLResults.conn.reconnect = true
     puts 'connected' unless batch_input
 rescue Mysql::Error => ex
     if ex.message.include?('Client does not support authentication')
@@ -377,7 +427,7 @@ cmd_thread = Thread.new do
         else
             puts '',"[#{mysql_user}@#{ssh_host||mysql_host}:#{MySQLResults.database_name}]"
             input = ''
-            prompt = bn + '> '
+            prompt = eval_context.prompt || (bn + '> ')
             loop do
                 str = Readline.readline(prompt)
                 if str.nil?
@@ -410,28 +460,37 @@ cmd_thread = Thread.new do
             next
         end
 
-        me[:running] = true
         break if cmds.run!(eval_context) == :done
-        me[:running] = false
     end
 end
 
+# keep a secondary connection to allow us to kill off a running query
+kill_conn = Mysql.new(mysql_host, mysql_user, mysql_password,
+                      MySQLResults.database_name, mysql_port)
+
 Signal.trap('INT') do
-    if cmd_thread[:running] && MySQLResults.conn
-        $stderr.puts 'Interrupting MySQL query...'
-        safe_timeout(MySQLResults.conn, :close, 'MySQL')
-        MySQLResults.conn = nil
+    # emulate MySQL's behavior
+    if MySQLResults.conn && MySQLResults.conn.busy?
+        tid = MySQLResults.conn.thread_id
+        $stderr.puts "Ctrl-C -- sending \"KILL QUERY #{tid}\" to server..."
+        kill_conn.kill(tid)
+        10.times do
+            break unless MySQLResults.conn.busy?
+            sleep(0.5)
+        end
+        MySQLResults.conn.select_db(MySQLResults.database_name)
+    else
+        $stderr.puts 'Ctrl-C -- exit!'
+        cmd_thread[:shutdown] = true
+        sleep(0.3)
+        cmd_thread.kill
     end
-    $stderr.puts 'Shutting down...'
-    cmd_thread[:shutdown] = true
-    sleep(0.3)
-    cmd_thread.kill
 end
 
 Signal.trap('CHLD') do
     $stderr.puts "SSH child (#{ssh_pid}) stopped--shutting down..."
-    if cmd_thread[:running] && MySQLResults.conn
-        $stderr.puts 'Interrupting MySQL query...'
+    if MySQLResults.conn && MySQLResults.conn.busy?
+        $stderr.puts 'Closing MySQL connection...'
         safe_timeout(MySQLResults.conn, :close, 'MySQL')
         MySQLResults.conn = nil
     end
@@ -460,14 +519,4 @@ if Readline::HISTORY.any?
         end
     end
     File.open(history_fn, 'w') {|f| YAML.dump(Readline::HISTORY.to_a, f)}
-end
-
-if ssh_pid && 0 <= ssh_pid
-    begin
-        Process.kill('INT', ssh_pid)
-        Process.waitpid(ssh_pid)
-    rescue Exception => ex
-        $stderr.puts ex.message
-        $stderr.puts ex.backtrace if verbose
-    end
 end

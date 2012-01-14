@@ -30,8 +30,8 @@ class TestEvalContext < Test::Unit::TestCase
     def test_reload
         orig = $stdout
         $stdout = out = StringIO.new
-        @conn.expects(:query).with(instance_of(String)).returns(nil).times(2)
-        @conn.expects(:affected_rows).returns(0).times(2)
+        @conn.expects(:query).with(instance_of(String)).returns(nil)
+        @conn.expects(:affected_rows).returns(0)
         @ctx.safe_eval('reload', nil, out)
         assert_match(/loaded: .+?example.rsqlrc/, out.string)
     ensure
@@ -117,7 +117,8 @@ class TestEvalContext < Test::Unit::TestCase
     end
 
     def test_complete
-        assert_equal(18, @ctx.complete('').size)
+        out = @ctx.complete('')
+        assert_equal(19, out.size, out.inspect)
         assert_equal(['version'], @ctx.complete('v'))
         assert_equal(['.version'], @ctx.complete('.v'))
     end

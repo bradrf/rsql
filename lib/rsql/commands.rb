@@ -145,10 +145,16 @@ module RSQL
                     results.send(cmd.displayer)
                 elsif EvalResults === results
                     last_results = nil
-                    if results.stdout && 0 < results.stdout.size
-                        puts results.stdout.string
+                    if MySQLResults === results.value
+                        # This happens if their recipe returns MySQL
+                        # results...just display it like above.
+                        results.value.send(cmd.displayer)
+                    else
+                        if results.stdout && 0 < results.stdout.size
+                            puts results.stdout.string
+                        end
+                        puts "=> #{results.value.inspect}" if results.value
                     end
-                    puts "=> #{results.value.inspect}" if results.value
                 end
             end
         end
@@ -213,7 +219,8 @@ module RSQL
                     begin
                         last_results = MySQLResults.query(value, eval_context)
                     rescue MySQLResults::MaxRowsException => ex
-                        $stderr.puts "refusing to process #{ex.rows} rows (max: #{ex.max})"
+                        $stderr.puts "refusing to process #{ex.rows} rows (max: #{ex.max})--" <<
+                            "consider raising this via set_max_rows"
                     rescue Mysql::Error => ex
                         $stderr.puts ex.message
                     rescue Exception => ex
