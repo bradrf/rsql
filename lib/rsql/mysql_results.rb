@@ -222,8 +222,10 @@ module RSQL
                 while vals = results.fetch_row
                     row = []
                     fields.each_with_index do |field, i|
-                        val = eval_context.bang_eval(field.name, vals[i])
-                        unless raw
+                        if raw
+                            val = vals[i]
+                        else
+                            val = eval_context.bang_eval(field.name, vals[i])
                             if val.nil?
                                 val = 'NULL'
                             elsif HEX_RANGE.include?(field.type) && val =~ /[^[:print:]\s]/
