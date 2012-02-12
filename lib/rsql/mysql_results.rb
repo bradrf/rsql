@@ -101,11 +101,17 @@ module RSQL
             # Get a list of the most recent query strings.
             #
             def history(cnt=:all)
-                if Integer === cnt 
+                if Integer === cnt && cnt < @@history.size
                     @@history[-cnt,cnt]
                 else
                     @@history
                 end
+            end
+
+            # Reset the history to an empty list.
+            #
+            def reset_history
+                @@history = []
             end
 
             # Get the maximum number of historical entries to retain.
@@ -320,8 +326,7 @@ module RSQL
             end
         end
 
-        # Iterate through each row of the table hashed with the field
-        # names.
+        # Iterate through each row of the table hashed with the field names.
         #
         def each_hash(&block)
             if @table
@@ -330,6 +335,61 @@ module RSQL
                     @fields.each_with_index {|f,i| hash[f.name] = row[i]}
                     yield(hash)
                 end
+            end
+        end
+
+        # Remove all rows that do NOT match the expression. Returns true if any
+        # matches were found.
+        #
+        # Options:
+        #   :fixed   => indicates that the string should be escaped of any special characters
+        #   :nocolor => will not add color escape codes to indicate the match
+        #   :inverse => reverses the regular expression match
+        #
+        def grep(pattern, *gopts)
+            if @table
+                nocolor = gopts.include?(:nocolor)
+
+                if inverted = gopts.include?(:inverse)
+                    # there's no point in coloring matches we are removing
+                    nocolor = true
+                end
+
+                if gopts.include?(:fixed)
+                    regexp = Regexp.new(/#{Regexp.escape(pattern.to_str)}/)
+                elsif Regexp === pattern
+                    regexp = pattern
+                else
+                    regexp = Regexp.new(/#{pattern.to_str}/)
+                end
+
+                rval = inverted
+
+                @table.delete_if do |row|
+                    matched = false
+                    row.each do |val|
+                        val = val.to_str unless String === val
+                        if nocolor
+                            if matched = !val.match(regexp).nil?
+                                rval = inverted ? false : true
+                                break
+                            end
+                        else
+                            # in the color case, we want to colorize all hits in
+                            # all columns, so we can't early terminate our
+                            # search
+                            if val.gsub!(regexp){|m| "\e[31;1m#{m}\e[0m"}
+                                matched = true
+                                rval = inverted ? false : true
+                            end
+                        end
+                    end
+                    inverted ? matched : !matched
+                end
+
+                return rval
+            else
+                return false
             end
         end
 

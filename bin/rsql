@@ -20,6 +20,9 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+# todo: look into using the logger class
+# (http://ruby-doc.org/stdlib-1.8.7/libdoc/logger/rdoc/Logger.html)
+
 begin
     # this isn't required unless that's how mysql and net/ssh have
     # been installed
@@ -27,6 +30,7 @@ begin
 rescue LoadError
 end
 
+require 'ostruct'
 require 'tmpdir'
 require 'thread'
 require 'timeout'
@@ -50,7 +54,8 @@ include RSQL
 
 bn = File.basename($0, '.rb')
 
-eval_context = EvalContext.new
+opts = OpenStruct.new
+eval_context = EvalContext.new(opts)
 
 # rewrite all double hyphen options into singles so both are supported
 ARGV.map!{|a| a.sub(/^--/,'-')}
@@ -132,8 +137,8 @@ if ARGV.delete('-version')
     exit
 end
 
-verbose = ARGV.delete('-verbose')
-eval_context.verbose = verbose
+opts.verbose = !ARGV.delete('-verbose').nil?
+eval_context.verbose = opts.verbose
 
 if i = ARGV.index('-maxrows')
     ARGV.delete_at(i)
@@ -144,7 +149,7 @@ if i = ARGV.index('-batch')
     ARGV.delete_at(i)
     MySQLResults.field_separator = ARGV.delete_at(i)
     MySQLResults.field_separator = "\t" if MySQLResults.field_separator == '\t'
-    batch_output = true
+    opts.batch_output = true
 end
 
 if i = ARGV.index('-ssh')
@@ -152,22 +157,24 @@ if i = ARGV.index('-ssh')
 
     ARGV.delete_at(i)
 
-    (ssh_host, ssh_user, ssh_password, ssh_port) = split_login(ARGV.delete_at(i))
+    (opts.ssh_host, opts.ssh_user, opts.ssh_password, opts.ssh_port) =
+        split_login(ARGV.delete_at(i))
 
     default_config = File.join(ENV['HOME'], '.ssh', 'config')
     if File.exists?(default_config)
-        ssh_cfghash = Net::SSH::Config.load(default_config, ssh_host)
+        opts.ssh_config = default_config
+        opts.ssh_cfghash = Net::SSH::Config.load(default_config, opts.ssh_host)
     end
 
-    if ssh_user.nil? || ssh_user.empty?
-        ssh_user = ssh_cfghash['user'] || ENV['USER'] || ENV['USERNAME']
+    if opts.ssh_user.nil? || opts.ssh_user.empty?
+        opts.ssh_user = opts.ssh_cfghash['user'] || ENV['USER'] || ENV['USERNAME']
     end
 end
 
 if i = ARGV.index('-sshconfig')
     ARGV.delete_at(i)
-    ssh_config = ARGV.delete_at(i)
-    ssh_cfghash = Net::SSH::Config.load(ssh_config, ssh_host)
+    opts.ssh_config = ARGV.delete_at(i)
+    opts.ssh_cfghash = Net::SSH::Config.load(opts.ssh_config, opts.ssh_host)
 end
 
 if i = ARGV.index('-e')
@@ -212,16 +219,18 @@ USAGE
     exit 1
 end
 
-(mysql_host, mysql_user, mysql_password, mysql_port) = split_login(ARGV.shift)
-mysql_password ||= get_password("#{mysql_user}@#{mysql_host} MySQL password: ")
-real_mysql_host = mysql_host
+(opts.mysql_host, opts.mysql_user, opts.mysql_password, opts.mysql_port) =
+    split_login(ARGV.shift)
+opts.mysql_password ||=
+    get_password("#{opts.mysql_user}@#{opts.mysql_host} MySQL password: ")
+opts.remote_mysql_host = opts.mysql_host
 
-if ssh_host
+if opts.ssh_host
     # randomly pick a tcp port above 1024
-    remote_mysql_port = mysql_port || 3306
-    mysql_port = rand(0xffff-1025) + 1025
-elsif mysql_port.nil?
-    mysql_port = 3306
+    opts.remote_mysql_port = opts.mysql_port || 3306
+    opts.mysql_port = rand(0xffff-1025) + 1025
+elsif opts.mysql_port.nil?
+    opts.mysql_port = 3306
 end
 
 MySQLResults.database_name = ARGV.shift
@@ -259,9 +268,9 @@ rescue Exception => ex
     false
 end
 
-MySQLResults.max_rows ||= batch_output ? 5000 : 1000
+MySQLResults.max_rows ||= opts.batch_output ? 5000 : 1000
 
-if ssh_host
+if opts.ssh_host
 
     # might need to open an idle channel here so server doesn't close on
     # us...or just loop reconnection here in the thread...
@@ -269,7 +278,7 @@ if ssh_host
     password_retry_cnt = 0
 
     unless batch_input
-        print "SSH #{ssh_user}#{ssh_user ? '@' : ''}#{ssh_host}..."
+        print "SSH #{opts.ssh_user}#{opts.ssh_user ? '@' : ''}#{opts.ssh_host}..."
         $stdout.flush
     end
 
@@ -291,16 +300,18 @@ if ssh_host
             $stderr.puts 'Closing SSH connection...' unless batch_input
             ssh_enabled = false
         end
-        opts = {:timeout => 15}
-        opts[:config] = ssh_config if ssh_config
-        if verbose
-            opts[:verbose] = :debug
-            puts "SSH options: #{opts.inspect}"
-            puts "SSH config: #{ssh_cfghash.inspect}"
+        ssh_opts = {:timeout => 15}
+        ssh_opts[:config] = opts.ssh_config if opts.ssh_config
+        if opts.verbose
+            ssh_opts[:verbose] = :debug
+            puts "SSH options: #{ssh_opts.inspect}"
+            puts "SSH config: #{opts.ssh_cfghash.inspect}"
         end
         begin
-            opts[:password] = ssh_password if ssh_password
-            ssh = Net::SSH.start(ssh_host, ssh_user, opts)
+            ssh_opts[:password] = opts.ssh_password if opts.ssh_password
+            opts.delete_field(:ssh_password)
+            ssh = Net::SSH.start(opts.ssh_host, opts.ssh_user, ssh_opts)
+            ssh_opts.delete(:password)
             ssh_enabled = true
             printf "connected (#{$$})..." unless batch_input
             $stdout.flush
@@ -308,20 +319,26 @@ if ssh_host
             if 2 < password_retry_cnt
                 $stderr.puts 'Permission denied. Giving up.'
             else
-                $stderr.puts 'Permission denied, please try again.' if ssh_password
-                ssh_password = get_password("#{ssh_user}@#{ssh_host} SSH password: ")
-                unless ssh_password.empty?
+                $stderr.puts 'Permission denied, please try again.' if opts.ssh_password
+                opts.ssh_password = get_password("#{opts.ssh_user}@#{opts.ssh_host} SSH password: ")
+                unless opts.ssh_password.empty?
                     password_retry_cnt += 1
                     retry
                 end
             end
         rescue Timeout::Error => ex
             $stderr.puts ex.message
+        rescue Exception => ex
+            if opts.verbose
+                $stderr.puts("#{ex.class}: #{ex.message}", ex.backtrace)
+            else
+                $stderr.puts(ex.message)
+            end
         ensure
             if ssh_enabled
-                ssh.forward.local(mysql_port, mysql_host, remote_mysql_port)
+                ssh.forward.local(opts.mysql_port, opts.mysql_host, opts.remote_mysql_port)
                 unless batch_input
-                    puts(verbose ? "ready (#{mysql_port} => #{remote_mysql_port})" : 'ready')
+                    puts(opts.verbose ? "ready (#{opts.mysql_port} => #{opts.remote_mysql_port})" : 'ready')
                 end
                 File.open(ipc_fn,'w'){|f| f.puts('ready')}
                 ssh.loop(1) { ssh_enabled }
@@ -343,9 +360,14 @@ if ssh_host
                     sleep 1
                 end
                 Process.kill('KILL', ssh_pid) unless killed
+            rescue Errno::ESRCH
+                # do nothing, process is already gone
             rescue Exception => ex
-                $stderr.puts ex.message
-                $stderr.puts ex.backtrace if verbose
+                if opts.verbose
+                    $stderr.puts("#{ex.class}: #{ex.message}", ex.backtrace)
+                else
+                    $stderr.puts(ex.message)
+                end
             end
         end
         File.unlink(ipc_fn) if File.exists?(ipc_fn)
@@ -363,24 +385,23 @@ if ssh_host
     unless ipc_state == 'ready'
         # give the child time to exit
         sleep(0.5)
-        $stderr.puts "failed to connect to #{ssh_host} SSH host"
+        $stderr.puts "failed to connect to #{opts.ssh_host} SSH host"
         exit 1
     end
 
     # now have our mysql connection use our port forward...
-    mysql_host = '127.0.0.1'
+    opts.mysql_host = '127.0.0.1'
 end
 
 unless batch_input
-    print "MySQL #{mysql_user}@#{real_mysql_host}..."
+    print "MySQL #{opts.mysql_user}@#{opts.remote_mysql_host}..."
     $stdout.flush
 end
 
-mysql_conn = "#{mysql_host}:#{remote_mysql_port || mysql_port}"
-
+mysql_conn = "#{opts.mysql_host}:#{opts.remote_mysql_port || opts.mysql_port}"
 begin
-    MySQLResults.conn = Mysql.new(mysql_host, mysql_user, mysql_password,
-                                  MySQLResults.database_name, mysql_port)
+    MySQLResults.conn = Mysql.new(opts.mysql_host, opts.mysql_user, opts.mysql_password,
+                                  MySQLResults.database_name, opts.mysql_port)
     MySQLResults.conn.reconnect = true
     puts 'connected' unless batch_input
 rescue Mysql::Error => ex
@@ -389,20 +410,19 @@ rescue Mysql::Error => ex
     else
         $stderr.puts "failed to connect to #{mysql_conn} mysql server: #{ex.message}"
     end
-    $stderr.puts ex.backtrace if verbose
+    $stderr.puts ex.backtrace if opts.verbose
     exit 1
 rescue NoMethodError
-    # this happens when mysql tries to read four bytes and assume it
-    # can index into them even when read returned nil...this happens
-    # because the connect succeeds due to the SSH forwarded port but
-    # then there isn't anybody connected on the remote side of the
-    # proxy
+    # this happens when mysql tries to read four bytes and assume it can index
+    # into them even when read returned nil...this happens because the connect
+    # succeeds due to the SSH forwarded port but then there isn't anybody
+    # connected on the remote side of the proxy
     $stderr.puts "failed to connect to #{mysql_conn} mysql server"
-    $stderr.puts ex.backtrace if verbose
+    $stderr.puts ex.backtrace if opts.verbose
     exit 1
 rescue Exception => ex
     $stderr.puts "failed to connect to #{mysql_conn} mysql server: #{ex.message} (#{ex.class})"
-    $stderr.puts ex.backtrace if verbose
+    $stderr.puts ex.backtrace if opts.verbose
     exit 1
 end
 
@@ -421,11 +441,11 @@ cmd_thread = Thread.new do
     until me[:shutdown] do
         default_displayer = :display_by_column
         if batch_input
-            default_displayer = :display_by_batch if batch_output
+            default_displayer = :display_by_batch if opts.batch_output
             me[:shutdown] = true         # only run once
             input = batch_input
         else
-            puts '',"[#{mysql_user}@#{ssh_host||mysql_host}:#{MySQLResults.database_name}]"
+            puts '',"[#{opts.mysql_user}@#{opts.ssh_host||opts.mysql_host}:#{MySQLResults.database_name}]"
             input = ''
             prompt = eval_context.prompt || (bn + '> ')
             loop do
@@ -465,8 +485,9 @@ cmd_thread = Thread.new do
 end
 
 # keep a secondary connection to allow us to kill off a running query
-kill_conn = Mysql.new(mysql_host, mysql_user, mysql_password,
-                      MySQLResults.database_name, mysql_port)
+kill_conn = Mysql.new(opts.mysql_host, opts.mysql_user, opts.mysql_password,
+                      MySQLResults.database_name, opts.mysql_port)
+opts.delete_field(:mysql_password)
 
 Signal.trap('INT') do
     # emulate MySQL's behavior
@@ -479,6 +500,7 @@ Signal.trap('INT') do
             sleep(0.5)
         end
         MySQLResults.conn.select_db(MySQLResults.database_name)
+        eval_context.call_init_registrations
     else
         $stderr.puts 'Ctrl-C -- exit!'
         cmd_thread[:shutdown] = true
@@ -488,7 +510,9 @@ Signal.trap('INT') do
 end
 
 Signal.trap('CHLD') do
-    $stderr.puts "SSH child (#{ssh_pid}) stopped--shutting down..."
+    unless opts.batch_output
+        $stderr.puts "SSH child (#{ssh_pid}) stopped--shutting down..."
+    end
     if MySQLResults.conn && MySQLResults.conn.busy?
         $stderr.puts 'Closing MySQL connection...'
         safe_timeout(MySQLResults.conn, :close, 'MySQL')
@@ -502,7 +526,7 @@ end
 begin
     cmd_thread.join
 rescue Exception => ex
-    $stderr.puts ex.message, ex.backtrace
+    $stderr.puts("#{ex.class}: #{ex.message}", ex.backtrace)
 end
 
 unless MySQLResults.conn.nil?

@@ -118,7 +118,7 @@ class TestEvalContext < Test::Unit::TestCase
 
     def test_complete
         out = @ctx.complete('')
-        assert_equal(19, out.size, out.inspect)
+        assert_equal(20, out.size, out.inspect)
         assert_equal(['version'], @ctx.complete('v'))
         assert_equal(['.version'], @ctx.complete('.v'))
     end

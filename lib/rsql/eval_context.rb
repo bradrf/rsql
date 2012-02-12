@@ -21,7 +21,12 @@
 
 module RSQL
 
+    require 'ostruct'
     require 'time'
+
+    # todo: add a simple way to interpolate directly within a sql query about to
+    # be exec'd (so we can save stuff from other queries in variables that can
+    # then be ref'd in a new query all on the cmd line)
 
     ################################################################################
     # This class wraps all dynamic evaluation and serves as the reflection class
@@ -34,9 +39,10 @@ module RSQL
 
         HEXSTR_LIMIT = 32
 
-        def initialize(verbose=false)
+        def initialize(options=OpenStruct.new)
+            @opts         = options
             @prompt       = nil
-            @verbose      = verbose
+            @verbose      = @opts.verbose
             @hexstr_limit = HEXSTR_LIMIT
             @results      = nil
 
@@ -55,6 +61,10 @@ module RSQL
                     method(:help),
                     'help',
                     'Show short syntax help.'),
+                :grep => Registration.new('grep', [], {},
+                    method(:grep),
+                    'grep',
+                    'Show results when regular expression matches any part of the content.'),
                 :reload => Registration.new('reload', [], {},
                     method(:reload),
                     'reload',
@@ -152,6 +162,10 @@ module RSQL
             if @bangs.key?(field)
                 bang = @bangs[field]
             else
+                # todo: this will run on *every* value--this should be optimized
+                # so that it's only run once on each query's result column
+                # fields and then we'd know if any bangs are usable and pased in
+                # for each result value
                 @global_bangs.each do |m,b|
                     if (String === m && m == field.to_s) ||
                         (Regexp === m && m.match(field.to_s))
@@ -165,7 +179,11 @@ module RSQL
                 begin
                     val = Thread.new{ eval("#{bang}(val)") }.value
                 rescue Exception => ex
-                    $stderr.puts(ex.message, ex.backtrace.first)
+                    if @verbose
+                        $stderr.puts("#{ex.class}: #{ex.message}", ex.backtrace)
+                    else
+                        $stderr.puts(ex.message, ex.backtrace.first)
+                    end
                 end
             end
 
@@ -465,24 +483,51 @@ Converting values on the fly:
 
   rsql> select name, value from rsql_example ! value => humanize_bytes;
 
+Inspect MySQL connection:
+
+  rsql> . p [host_info, proto_info];
+
+Escape strings:
+
+  rsql> . p escape_string('drop table "here"');
+
+Show only rows containing a string:
+
+  rsql> select * from rsql_example | grep 'mystuff';
+
+Show only rows containing a regular expression with case insensitive search:
+
+  rsql> select * from rsql_example | grep /mystuff/i;
+
 EOF
             end
 
-            # Provide a helper utility in the event a registered
-            # method would like to make its own queries.
+            # Provide a helper utility in the event a registered method would
+            # like to make its own queries.
             #
             def query(content, *args) # :doc:
                 MySQLResults.query(content, self, *args)
             end
 
-            # Show the most recent queries made to the MySQL server in
-            # this session. Default is to show the last one.
+            # Show the most recent queries made to the MySQL server in this
+            # session. Default is to show the last one.
             #
             def history(cnt=1)
                 if h = MySQLResults.history(cnt)
                     h.each{|q| puts '', q}
                 end
                 nil
+            end
+
+            # Call MySQLResults' grep to remove (or show) only those lines that
+            # have content matching the patterrn.
+            #
+            def grep(*args)
+                if @results.grep(*args)
+                    @results
+                else
+                    $stderr.puts 'No matches found'
+                end
             end
 
             # Register bangs to evaluate on all displayers as long as a column
@@ -570,7 +615,7 @@ EOF
             # Convert a number of bytes into a human readable string.
             #
             def humanize_bytes(bytes) # :doc:
-                abbrev = ['B','KB','MB','GB','TB','PB','EB','ZB','YB']
+                abbrev = ['B ','KB','MB','GB','TB','PB','EB','ZB','YB']
                 bytes = bytes.to_i
                 fmt = '%7.2f'
 
@@ -680,6 +725,8 @@ EOF
                     reg.block.call(*final_args)
                 elsif MySQLResults.respond_to?(sym)
                     MySQLResults.send(sym, *args)
+                elsif MySQLResults.conn.respond_to?(sym)
+                    MySQLResults.conn.send(sym, *args)
                 else
                     super.method_missing(sym, *args, &block)
                 end
