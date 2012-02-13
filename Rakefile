@@ -11,7 +11,7 @@ Rake::RDocTask.new do |rd|
     rd.rdoc_dir = 'doc'
     rd.title = 'RSQL Documentation'
     rd.main = "README.rdoc"
-    rd.rdoc_files.include('README.rdoc', 'lib')
+    rd.rdoc_files.include('README.rdoc', 'LICENSE', 'lib/**/*.rb')
 end
 
 Rake::TestTask.new do |t|
@@ -37,11 +37,17 @@ spec = Gem::Specification.new do |s|
             break
         end
     end
-    s.summary = 'Ruby based MySQL command line with recipes.'
-    s.name = 'rsql'
-    s.author = 'Brad Robel-Forrest'
-    s.email = 'brad+rsql@gigglewax.com'
-    s.version = rsql_version
+    s.name        = 'rsql'
+    s.version     = rsql_version
+    s.author      = 'Brad Robel-Forrest'
+    s.email       = 'brad+rsql@gigglewax.com'
+    s.summary     = 'Ruby-based MySQL command line with recipes.'
+    s.description = <<-EOF.delete "\n"
+RSQL makes working with a MySQL command line more convenient through
+the use of recipes and embedding the common operation of using a SSH
+connection to an intermediary host for access to the MySQL server.
+EOF
+    s.homepage = 'https://rubygems.org/gems/rsql'
     s.required_ruby_version = '>=1.8.0'
     s.add_dependency('net-ssh', '>=2.1.0')
     s.add_dependency('mysqlplus', '>=0.1.2')
@@ -49,20 +55,15 @@ spec = Gem::Specification.new do |s|
     s.add_development_dependency('rake')
     s.add_development_dependency('rdoc')
     s.add_development_dependency('rcov')
-    s.require_path = 'lib'
-    s.files = `git ls-files`.split($/)
+    s.require_paths = ['lib']
+    s.files         = `git ls-files`.split($/)
     s.files.delete('Rakefile')
+    s.test_files    = `git ls-files -- {test,spec,features}/*`.split("\n")
+    s.executables   = `git ls-files -- bin/*`.split($/).map{ |f| File.basename(f) }
     s.rdoc_options <<
         '--title' << 'RSQL Documentation' <<
         '--main' << 'README.rdoc'
-    s.extra_rdoc_files = ['README.rdoc']
-    s.executables = 'rsql'
-    s.homepage = 'https://rubygems.org/gems/rsql'
-    s.description = <<EOF
-RSQL makes working with a MySQL command line more convenient through
-the use of recipes and embedding the common operation of using a SSH
-connection to an intermediary host for access to the MySQL server.
-EOF
+    s.extra_rdoc_files = ['README.rdoc', 'LICENSE']
 end
 
 Gem::PackageTask.new(spec) do |pkg|
