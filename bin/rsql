@@ -179,14 +179,14 @@ end
 
 if i = ARGV.index('-e')
     ARGV.delete_at(i)
-    batch_input = ''
+    opts.batch_input = ''
     ARGV.delete_if do |arg|
         arg_i = ARGV.index(arg)
         if i <= arg_i
-            batch_input << ' ' << arg
+            opts.batch_input << ' ' << arg
         end
     end
-    batch_input.strip!
+    opts.batch_input.strip!
 end
 
 show_usage = false
@@ -235,9 +235,9 @@ end
 
 MySQLResults.database_name = ARGV.shift
 
-if !$stdin.tty? && batch_input.nil?
+if !$stdin.tty? && opts.batch_input.nil?
     # accept commands from stdin
-    batch_input = $stdin.read.gsub(/\r?\n/,';')
+    opts.batch_input = $stdin.read.gsub(/\r?\n/,';')
 end
 
 # make sure we remove any duplicates when we add to the history to
@@ -277,7 +277,7 @@ if opts.ssh_host
 
     password_retry_cnt = 0
 
-    unless batch_input
+    unless opts.batch_input
         print "SSH #{opts.ssh_user}#{opts.ssh_user ? '@' : ''}#{opts.ssh_host}..."
         $stdout.flush
     end
@@ -297,7 +297,7 @@ if opts.ssh_host
         ssh_enabled = false
         Signal.trap('INT', 'IGNORE')
         Signal.trap('TERM') do
-            $stderr.puts 'Closing SSH connection...' unless batch_input
+            $stderr.puts 'Closing SSH connection...' unless opts.batch_input
             ssh_enabled = false
         end
         ssh_opts = {:timeout => 15}
@@ -313,7 +313,7 @@ if opts.ssh_host
             ssh = Net::SSH.start(opts.ssh_host, opts.ssh_user, ssh_opts)
             ssh_opts.delete(:password)
             ssh_enabled = true
-            printf "connected (#{$$})..." unless batch_input
+            printf "connected (#{$$})..." unless opts.batch_input
             $stdout.flush
         rescue Net::SSH::AuthenticationFailed
             if 2 < password_retry_cnt
@@ -337,7 +337,7 @@ if opts.ssh_host
         ensure
             if ssh_enabled
                 ssh.forward.local(opts.mysql_port, opts.mysql_host, opts.remote_mysql_port)
-                unless batch_input
+                unless opts.batch_input
                     puts(opts.verbose ? "ready (#{opts.mysql_port} => #{opts.remote_mysql_port})" : 'ready')
                 end
                 File.open(ipc_fn,'w'){|f| f.puts('ready')}
@@ -393,7 +393,7 @@ if opts.ssh_host
     opts.mysql_host = '127.0.0.1'
 end
 
-unless batch_input
+unless opts.batch_input
     print "MySQL #{opts.mysql_user}@#{opts.remote_mysql_host}..."
     $stdout.flush
 end
@@ -403,7 +403,7 @@ begin
     MySQLResults.conn = Mysql.new(opts.mysql_host, opts.mysql_user, opts.mysql_password,
                                   MySQLResults.database_name, opts.mysql_port)
     MySQLResults.conn.reconnect = true
-    puts 'connected' unless batch_input
+    puts 'connected' unless opts.batch_input
 rescue Mysql::Error => ex
     if ex.message.include?('Client does not support authentication')
         $stderr.puts "failed to connect to #{mysql_conn} mysql server: unknown credentials?"
@@ -440,10 +440,10 @@ cmd_thread = Thread.new do
     me[:shutdown] = false
     until me[:shutdown] do
         default_displayer = :display_by_column
-        if batch_input
+        if opts.batch_input
             default_displayer = :display_by_batch if opts.batch_output
             me[:shutdown] = true         # only run once
-            input = batch_input
+            input = opts.batch_input
         else
             puts '',"[#{opts.mysql_user}@#{opts.ssh_host||opts.mysql_host}:#{MySQLResults.database_name}]"
             input = ''

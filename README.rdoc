@@ -4,19 +4,20 @@ Homepage:: https://rubygems.org/gems/rsql
 
 == DESCRIPTION
 
-This is an application to make working with a SQL command line more
-convenient by allowing interaction with recipes and Ruby code in
-addition to embedding the common operation of using a SSH connection
-to an intermediary host for access to the SQL server.
+This is an application to make working with a SQL command line more convenient
+by allowing interaction with recipes and Ruby code in addition to embedding the
+common operation of using a SSH connection to an intermediary host for access to
+the SQL server.
 
 === Installation
 
   gem install rsql
 
-Alternatively, RSQL can be downloaded as a tar.gz or zip and run
-directly from within the unpacked source directory as long as the
-MySQL Ruby library is available. SSH functionality will be disabled
-unless the Net::SSH Ruby library is also installed and available.
+Alternatively, RSQL can be downloaded as a tar.gz or zip and run directly from
+within the unpacked source directory as long as the {MySQL Ruby
+library}[https://rubygems.org/gems/mysqlplus] is available. SSH functionality
+will be disabled unless the {Net::SSH Ruby
+library}[https://rubygems.org/gems/net-ssh] is also installed and available.
 
 == USAGE
 
@@ -33,68 +34,67 @@ RSQL is invoked from the command line using:
   Display details on SSH connections and evaluation stack traces.
 
 -rc _rcfile_::
-  Override loading the .rsqlrc file from the HOME directory for one in
-  a different location.
+  Override loading the .rsqlrc file from the HOME directory for one in a
+  different location.
 
 -maxrows _max_::
   Override the maximum number of rows to process.
 
 -batch _field_separator_::
-  Run in batch mode using the separator specified (e.g. a /t will
-  separate fields with a tab character).
+  Run in batch mode using the separator specified (e.g. a /t will separate
+  fields with a tab character).
 
 -ssh _ssh_host_::
   Establish a SSH connection before connecting to the MySQL host.
 
 -sshconfig _ssh_config_::
-  Use a specific SSH configuration file instead of the default files
-  loaded at runtime by Net::SSH.
+  Use a specific SSH configuration file instead of the default files loaded at
+  runtime by Net::SSH.
 
 -e [_query_]::
-  Run a query from the command line (i.e. not interactive). If a
-  _query_ is not provided, STDIN will be read. Multiple commands can
-  be issued in one set by separation with semicolons just as if they
-  had been provided at the RSQL prompt interactively. This option
-  *must* be the last option specified.
+  Run a query from the command line (i.e. not interactive). If a _query_ is not
+  provided, STDIN will be read. Multiple commands can be issued in one set by
+  separation with semicolons just as if they had been provided at the RSQL
+  prompt interactively. This option *must* be the last option specified.
 
-The _ssh_host_ and _mysql_host_ arguments may optionally include
-_user_, _password_, or _port_ values using the following syntax:
+The _ssh_host_ and _mysql_host_ arguments may optionally include _user_,
+_password_, or _port_ values using the following syntax:
 
   [<user>[:<password>]@]<host>[:<port>]
 
-Once at the +rsql+ prompt, normal MySQL queries can be entered as
-expected, ending each with a semicolon (;) for columnar output or \\G
-for line-by-line output formatting.
+Once at the +rsql+ prompt, normal MySQL queries can be entered as expected,
+ending each with a semicolon (;) for columnar output or \\G for line-by-line
+output formatting.
 
-Ruby commands will be evaluated for any content entered at the RSQL
-prompt beginning with a period.
+Ruby commands will be evaluated for any content entered at the RSQL prompt
+beginning with a period.
 
 ==== Command Line Examples
 
-Connect as the "root" user to a MySQL server running on the local
-host, with no password (because there are no characters listed between
-the colon and the at sign):
+Connect as the "root" user to a MySQL server running on the local host, with no
+password (because there are no characters listed between the colon and the at
+sign):
 
   rsql root:@127.0.0.1
 
-Connect as the "readonly" user to the "internal.database.acme.com"
-host's MySQL server after establishing a SSH tunnel to the
-"external.acme.com" gateway. In this case, we are expecting that our
-SSH configuration is set up with the right user name. Because we did
-not provide a password for MySQL, one will be obtained directly from
-the console (without echoing the characters typed):
+Connect as the "readonly" user to the "internal.database.acme.com" host's MySQL
+server after establishing a SSH tunnel to the "external.acme.com" gateway. In
+this case, we are expecting that our SSH configuration is set up with the right
+user name. Because we did not provide a password for MySQL, one will be obtained
+directly from the console (without echoing the characters typed):
 
   rsql -ssh external.acme.com readonly@internal.database.acme.com
 
 == GETTING STARTED
 
-This example walks through many features of RSQL including how to
-build up recipes:
+This example walks through many features of RSQL including how to build up
+recipes:
 
-https://github.com/bradrf/rsql/raw/master/example.rsqlrc
+Try out the simple examples in rdoc-ref:example.rsqlrc.rdoc for a painless
+introduciton for how to leverage RSQL.
 
-The file is available as example.rsqlrc installed with the gem or
-downloaded with the source.
+The file is available as example.rsqlrc installed with the gem or downloaded
+with the source.
 
 == LICENSE
 
@@ -102,21 +102,19 @@ RSQL is licensed under the MIT License:
 
 Copyright (C) 2011-2012 by Brad Robel-Forrest <brad+rsql@gigglewax.com>
 
-Permission is hereby granted, free of charge, to any person obtaining
-a copy of this software and associated documentation files (the
-"Software"), to deal in the Software without restriction, including
-without limitation the rights to use, copy, modify, merge, publish,
-distribute, sublicense, and/or sell copies of the Software, and to
-permit persons to whom the Software is furnished to do so, subject to
-the following conditions:
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
 
-The above copyright notice and this permission notice shall be
-included in all copies or substantial portions of the Software.
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

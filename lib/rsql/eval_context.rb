@@ -63,7 +63,7 @@ module RSQL
                     'Show short syntax help.'),
                 :grep => Registration.new('grep', [], {},
                     method(:grep),
-                    'grep',
+                    'grep(string_or_regexp, *options)',
                     'Show results when regular expression matches any part of the content.'),
                 :reload => Registration.new('reload', [], {},
                     method(:reload),
@@ -71,7 +71,7 @@ module RSQL
                     'Reload the rsqlrc file.'),
                 :desc => Registration.new('desc', [], {},
                     method(:desc),
-                    'desc',
+                    'desc(name)',
                     'Describe the content of a recipe.'),
                 :history => Registration.new('history', [], {},
                     method(:history),
@@ -79,7 +79,7 @@ module RSQL
                     'Print recent queries made (request a count or use :all for entire list).'),
                 :set_max_rows => Registration.new('set_max_rows', [], {},
                     Proc.new{|r| MySQLResults.max_rows = r},
-                    'set_max_rows',
+                    'set_max_rows(max)',
                     'Set the maximum number of rows to process.'),
                 :max_rows => Registration.new('max_rows', [], {},
                     Proc.new{MySQLResults.max_rows},
@@ -334,57 +334,60 @@ module RSQL
                 return nil
             end
 
+            # Used by params() and desc() to find where a block begins.
+            #
+            def locate_block_start(name, io, lineno, ending=nil, source=nil)
+                i = 0
+                param_line = ''
+                params = nil
+
+                while line = io.gets
+                    i += 1
+                    next if i < lineno
+                    source << line if source
+
+                    # give up if no start found within 20 lines
+                    break if lineno + 20 < i
+                    if m = line.match(/(\{|do\b)(.*)$/)
+                        if ending
+                            ending << (m[1] == '{' ? '\}' : 'end')
+                        end
+                        # adjust line to be the remainder after the start
+                        param_line = m[2]
+                        break
+                    end
+                end
+
+                if m = param_line.match(/^\s*\|([^\|]*)\|/)
+                    return "(#{m[1]})"
+                else
+                    return nil
+                end
+            end
+
             # Attempt to locate the parameters of a given block by
             # searching its source.
             #
             def params(name, block)
-                params = ''
+                params = nil
 
-                if block.arity != 0 && block.arity != -1 &&
-                        block.inspect.match(/@(.+):(\d+)>$/)
+                if block.arity != 0 && block.inspect.match(/@(.+):(\d+)>$/)
                     fn = $1
                     lineno = $2.to_i
 
                     if fn == '(eval)'
                         $stderr.puts "refusing to search an eval block for :#{name}"
-                        return params
+                        return ''
                     end
 
                     File.open(fn) do |f|
-                        i = 0
-                        found = false
-                        while line = f.gets
-                            i += 1
-                            next if i < lineno
-
-                            unless found
-                                # give up if no start found within 20
-                                # lines
-                                break if lineno + 20 < i
-                                if m = line.match(/(\{|do\b)(.*)$/)
-                                    # adjust line to be the remainder
-                                    # after the start
-                                    line = m[2]
-                                    found = true
-                                else
-                                    next
-                                end
-                            end
-
-                            if m = line.match(/^\s*\|([^\|]*)\|/)
-                                params = "(#{m[1]})"
-                                break
-                            end
-
-                            # if the params aren't here then we'd
-                            # better only have whitespace otherwise
-                            # this block doesn't have params...even
-                            # though arity says it should
-                            next if line.match(/^\s*$/)
-                            $stderr.puts "unable to locate params for :#{name}"
-                            break
-                        end
+                        params = locate_block_start(name, f, lineno)
                     end
+                end
+
+                if params.nil?
+                    $stderr.puts "unable to locate params for :#{name}" if @verbose
+                    return ''
                 end
 
                 return params
@@ -428,23 +431,13 @@ module RSQL
 
                     File.open(fn) do |f|
                         source = ''
-                        i = 0
-                        ending = nil
-                        found = false
+                        ending = ''
+
+                        locate_block_start(sym, f, lineno, ending, source)
+                        break if ending.empty?
 
                         while line = f.gets
-                            i += 1
-                            next unless ending || i == lineno
                             source << line
-                            unless ending
-                                unless m = line.match(/\{|do\b/)
-                                    $stderr.puts "unable to locate block beginning at #{fn}:#{lineno}"
-                                    return
-                                end
-                                ending = m[0] == '{' ? '\}' : 'end'
-                                next
-                            end
-
                             if m = line.match(/^#{ending}/)
                                 found = true
                                 break
@@ -503,7 +496,8 @@ EOF
             end
 
             # Provide a helper utility in the event a registered method would
-            # like to make its own queries.
+            # like to make its own queries. See MySQLResults.query for more
+            # details regarding the other arguments available.
             #
             def query(content, *args) # :doc:
                 MySQLResults.query(content, self, *args)
@@ -512,17 +506,17 @@ EOF
             # Show the most recent queries made to the MySQL server in this
             # session. Default is to show the last one.
             #
-            def history(cnt=1)
+            def history(cnt=1) # :doc:
                 if h = MySQLResults.history(cnt)
                     h.each{|q| puts '', q}
                 end
                 nil
             end
 
-            # Call MySQLResults' grep to remove (or show) only those lines that
+            # Call MySQLResults#grep to remove (or show) only those lines that
             # have content matching the patterrn.
             #
-            def grep(*args)
+            def grep(*args) # :doc:
                 if @results.grep(*args)
                     @results
                 else

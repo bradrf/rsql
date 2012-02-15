@@ -7,11 +7,35 @@ require 'rdoc/task'
 
 task :default => [:rdoc, :test]
 
+file 'example.rsqlrc.rdoc' => 'example.rsqlrc' do
+    puts 'Generating example.rsqlrc.rdoc'
+    File.open('example.rsqlrc') do |rc|
+        File.open('example.rsqlrc.rdoc', 'w') do |outf|
+            while line = rc.gets
+                unless line.sub!(/^#\s+(rsql>.*$)/, '<tt>\1</tt>')
+                    unless line.sub!(/^##+\s*$/, '---')
+                        unless line.sub!(/^#\s*(-\*-|vi:).*$/, '')
+                            unless line.sub!(/^#\s*/, '')
+                                line = " #{line}"
+                            end
+                        end
+                    end
+                end
+                outf.puts(line)
+            end
+        end
+    end
+end
+
+task :rdoc => 'example.rsqlrc.rdoc'
+task :gem  => 'example.rsqlrc.rdoc'
+CLOBBER.include 'example.rsqlrc.rdoc'
+
 Rake::RDocTask.new do |rd|
     rd.rdoc_dir = 'doc'
     rd.title = 'RSQL Documentation'
     rd.main = "README.rdoc"
-    rd.rdoc_files.include('README.rdoc', 'LICENSE', 'lib/**/*.rb')
+    rd.rdoc_files.include('README.rdoc', 'LICENSE', 'example.rsqlrc.rdoc', 'lib/**/*.rb')
 end
 
 Rake::TestTask.new do |t|
@@ -56,14 +80,14 @@ EOF
     s.add_development_dependency('rdoc')
     s.add_development_dependency('rcov')
     s.require_paths = ['lib']
-    s.files         = `git ls-files`.split($/)
+    s.files         = `git ls-files`.split($/) << 'example.rsqlrc.rdoc'
     s.files.delete('Rakefile')
-    s.test_files    = `git ls-files -- {test,spec,features}/*`.split("\n")
+    s.test_files    = `git ls-files -- test/*`.split("\n")
     s.executables   = `git ls-files -- bin/*`.split($/).map{ |f| File.basename(f) }
     s.rdoc_options <<
         '--title' << 'RSQL Documentation' <<
         '--main' << 'README.rdoc'
-    s.extra_rdoc_files = ['README.rdoc', 'LICENSE']
+    s.extra_rdoc_files = ['README.rdoc', 'LICENSE', 'example.rsqlrc.rdoc']
 end
 
 Gem::PackageTask.new(spec) do |pkg|
