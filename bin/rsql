@@ -277,7 +277,7 @@ if opts.ssh_host
 
     password_retry_cnt = 0
 
-    unless opts.batch_input
+    unless opts.batch_output
         print "SSH #{opts.ssh_user}#{opts.ssh_user ? '@' : ''}#{opts.ssh_host}..."
         $stdout.flush
     end
@@ -297,7 +297,7 @@ if opts.ssh_host
         ssh_enabled = false
         Signal.trap('INT', 'IGNORE')
         Signal.trap('TERM') do
-            $stderr.puts 'Closing SSH connection...' unless opts.batch_input
+            $stderr.puts 'Closing SSH connection...' unless opts.batch_output
             ssh_enabled = false
         end
         ssh_opts = {:timeout => 15}
@@ -313,7 +313,7 @@ if opts.ssh_host
             ssh = Net::SSH.start(opts.ssh_host, opts.ssh_user, ssh_opts)
             ssh_opts.delete(:password)
             ssh_enabled = true
-            printf "connected (#{$$})..." unless opts.batch_input
+            printf "connected (#{$$})..." unless opts.batch_output
             $stdout.flush
         rescue Net::SSH::AuthenticationFailed
             if 2 < password_retry_cnt
@@ -337,7 +337,7 @@ if opts.ssh_host
         ensure
             if ssh_enabled
                 ssh.forward.local(opts.mysql_port, opts.mysql_host, opts.remote_mysql_port)
-                unless opts.batch_input
+                unless opts.batch_output
                     puts(opts.verbose ? "ready (#{opts.mysql_port} => #{opts.remote_mysql_port})" : 'ready')
                 end
                 File.open(ipc_fn,'w'){|f| f.puts('ready')}
@@ -393,7 +393,7 @@ if opts.ssh_host
     opts.mysql_host = '127.0.0.1'
 end
 
-unless opts.batch_input
+unless opts.batch_output
     print "MySQL #{opts.mysql_user}@#{opts.remote_mysql_host}..."
     $stdout.flush
 end
@@ -403,7 +403,7 @@ begin
     MySQLResults.conn = Mysql.new(opts.mysql_host, opts.mysql_user, opts.mysql_password,
                                   MySQLResults.database_name, opts.mysql_port)
     MySQLResults.conn.reconnect = true
-    puts 'connected' unless opts.batch_input
+    puts 'connected' unless opts.batch_output
 rescue Mysql::Error => ex
     if ex.message.include?('Client does not support authentication')
         $stderr.puts "failed to connect to #{mysql_conn} mysql server: unknown credentials?"

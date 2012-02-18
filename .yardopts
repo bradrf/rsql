@@ -1,0 +1,7 @@
+--private
+--no-private
+-r README.rdoc
+lib/**/*.rb
+-
+LICENSE
+example.rsqlrc.rdoc

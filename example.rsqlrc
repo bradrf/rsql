@@ -13,7 +13,7 @@
 
 # To use this file, change directory to the one containing this file and run
 # RSQL connecting to your MySQL server (run rsql with no arguments for
-# usage--see rdoc-ref:README.rdoc for more details on command line parameters).
+# usage--see {file:README.rdoc} for more details on command line parameters).
 #
 #   rsql> .load 'example.rsqlrc';
 
@@ -34,7 +34,7 @@
 
 ################################################################################
 
-# Use of RSQL::EvalContext#register_init allows a block to be automatically
+# Use of {RSQL::EvalContext#register_init} allows a block to be automatically
 # invoked when this file is loaded. Often, this is useful to run set up routines
 # like setting MySQL variables for different read levels (e.g. <b><tt>SET
 # SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED</tt></b>). Any number of
@@ -51,7 +51,7 @@ CREATE TEMPORARY TABLE IF NOT EXISTS #{@rsql_table} (
 }, :desc => 'Sets up example table for trying out RSQL.'
 
 # This next recipe is building up a string with a single variable interpolated
-# into it (our table name) through RSQL::EvalContext#register. The string will
+# into it (our table name) through {RSQL::EvalContext#register}. The string will
 # then be used as if typed at the command line.
 #
 #   rsql> .cleanup_example;
@@ -73,7 +73,7 @@ DROP TEMPORARY TABLE IF EXISTS #{@rsql_table}
 #
 #   rsql> .fill_table;
 #
-# Notice the use of the RSQL::EvalContext#hexify and RSQL::EvalContext#squeeze!
+# Notice the use of the {RSQL::EvalContext#hexify} and {RSQL::EvalContext#squeeze!}
 # helper methods.
 #
 register :fill_table, :desc => 'Populate the example table.' do
@@ -112,7 +112,7 @@ SELECT name, value FROM #{@rsql_table} WHERE #{val} <= value
 
 # Sometimes we make mistakes (never!). Normally, the command history kept in
 # RSQL only stores the last thing entered at the prompt--not any query that the
-# previous command may have generated and invoked.  When writing a recipe that
+# previous command may have generated and invoked. When writing a recipe that
 # generates a query that has an error reported by MySQL, it is really handy to
 # see the generated SQL.
 #
@@ -122,7 +122,7 @@ SELECT name, value FROM #{@rsql_table} WHERE #{val} <= value
 #   rsql> .bad_query;
 #
 # So the command in our history is the recipe and not the query. To see the
-# query the RSQL::EvalContext#history has a helper method ready for us:
+# query the {RSQL::EvalContext#history} has a helper method ready for us:
 #
 #   rsql> .history;
 #
@@ -137,8 +137,8 @@ SELECT name, value FROM #{@rsql_table} WHERE valu < 10000
 #
 #   rsql> select name, value from rsql_example ! value => humanize_bytes;
 #
-# The RSQL::EvalContext#humanize_bytes is another helper method. There are
-# several others available. Check out the RSQL::EvalContext class for details.
+# The {RSQL::EvalContext#humanize_bytes} is another helper method. There are
+# several others available. Check out the {RSQL::EvalContext} class for details.
 #
 # Additional mappings can be added, separated by commas.
 #
@@ -184,10 +184,10 @@ SELECT name FROM #{@rsql_table}
 #
 #   rsql> select name, value from rsql_example | p @results;
 #
-# The RSQL::EvalContext class manages the results from a previous query in the
+# The {RSQL::EvalContext} class manages the results from a previous query in the
 # <b><tt>@results</tt></b> member variable accessible by any Ruby recipe
-# code. This is an instance of the RSQL::MySQLResults class. Below we make use
-# of the RSQL::MySQLResults#each_hash method to walk over all rows. There are
+# code. This is an instance of the {RSQL::MySQLResults} class. Below we make use
+# of the {RSQL::MySQLResults#each_hash} method to walk over all rows. There are
 # other helpful routines available.
 #
 # Here's an example that writes a simple report of the data we are working
@@ -215,8 +215,9 @@ end
 #
 # After running this, a <b><tt>myobj.yml</tt></b> file should be created in the
 # local directory containing all the content from the query. To accomplish this,
-# the RSQL::EvalContext#safe_save method is invoked which serializes our object
-# so that we may later decided to run some post processing on the content.
+# the {RSQL::EvalContext#safe_save} method is invoked which serializes our
+# object so that we may later decided to run some post processing on the
+# content.
 #
 # Inspect the YAML[http://www.yaml.org/] content written out:
 #
@@ -246,7 +247,7 @@ SELECT name, value
 # Sometimes it just isn't enough to be able to rely on generating SQL queries
 # and piping into handlers. Sometimes we just need to roll up our sleeves and
 # run queries directly so we can start processing results and dealing with
-# presentation all on our own. That's where the RSQL::EvalContext#query helper
+# presentation all on our own. That's where the {RSQL::EvalContext#query} helper
 # comes in handy.
 #
 # The intention here is to just create a series of sentences out of two separate
@@ -262,7 +263,7 @@ register :show_sentences, :desc => 'Show results as sentences.' do
     end
 end
 
-# The RSQL::MySQLResults class built in to RSQL handles binary content
+# The {RSQL::MySQLResults} class built in to RSQL handles binary content
 # gracefully, automatically converting it to something a little nicer to our
 # consoles than just dumping it. It converts it into a hexadecimal string.
 #
@@ -280,7 +281,7 @@ SELECT * FROM #{@rsql_table} WHERE stuff=#{hexify stuff}
 }, :desc => 'Find some hex stuff.'
 
 # There are many other things to try out left as an "exercise for the
-# reader". Browsing the RSQL::EvalContext and RSQL::MySQLResults classes would
-# be an excellent start.
+# reader". Browsing the {RSQL::EvalContext} and {RSQL::MySQLResults} classes
+# would be an excellent start.
 
 # vi: set filetype=ruby

@@ -24,6 +24,7 @@
 #
 require 'mysqlplus'
 
+# @private
 class Mysql # :nodoc:
     alias :query :async_query
 end

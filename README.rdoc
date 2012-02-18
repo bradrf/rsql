@@ -87,14 +87,12 @@ directly from the console (without echoing the characters typed):
 
 == GETTING STARTED
 
-This example walks through many features of RSQL including how to build up
-recipes:
+Try out the {file:example.rsqlrc.rdoc} for a painless introduction on how to
+leverage RSQL.
 
-Try out the simple examples in rdoc-ref:example.rsqlrc.rdoc for a painless
-introduciton for how to leverage RSQL.
-
-The file is available as example.rsqlrc installed with the gem or downloaded
-with the source.
+The file is available as
+{<tt>example.rsqlrc</tt>}[https://raw.github.com/bradrf/rsql/master/example.rsqlrc]
+installed with the gem or downloaded with the source.
 
 == LICENSE
 
