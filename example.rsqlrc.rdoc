@@ -1,0 +1,287 @@
+
+ 
+= Getting Starting with RSQL
+ 
+This file is meant to be a working illustration of how RSQL might be used and
+to show off various features of the application.
+ 
+All examples below will use the following temporary table. You will need to
+"use" a database first before loading this file since it will need to create
+this temporary table.
+
+ @rsql_table = 'rsql_example'
+ 
+To use this file, change directory to the one containing this file and run
+RSQL connecting to your MySQL server (run rsql with no arguments for
+usage--see {file:README.rdoc} for more details on command line parameters).
+
+<tt>rsql> .load 'example.rsqlrc';</tt>
+ 
+After it's loaded try listing out all the registered recipes (along with
+parameter notes and descriptions).
+
+<tt>rsql> .list;</tt>
+ 
+If you make changes to the example to try out new things (and please do!), you
+can simply have the recipe file reloaded to have your changes pulled in
+immediately without exiting your session.
+
+<tt>rsql> .reload;</tt>
+ 
+Notice that any command issued starting with a period (.) results in
+evaluation of Ruby. Thus, any valid Ruby syntax is applicable following a
+period on a command.
+ 
+---
+ 
+Use of {RSQL::EvalContext#register_init} allows a block to be automatically
+invoked when this file is loaded. Often, this is useful to run set up routines
+like setting MySQL variables for different read levels (e.g. <b><tt>SET
+SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED</tt></b>). Any number of
+these may be defined.
+
+Here we are merely setting up the example table.
+
+ register_init :setup_example, %q{
+ CREATE TEMPORARY TABLE IF NOT EXISTS #{@rsql_table} (
+   name VARCHAR(100),
+   value INT(11),
+   stuff BLOB
+ )
+ }, :desc => 'Sets up example table for trying out RSQL.'
+ 
+This next recipe is building up a string with a single variable interpolated
+into it (our table name) through {RSQL::EvalContext#register}. The string will
+then be used as if typed at the command line.
+
+<tt>rsql> .cleanup_example;</tt>
+
+In this case, we are simply dropping the table created by our initialization
+recipe. If you do this, you'll need to call the <b><tt>setup_example</tt></b>
+initialization recipe again before moving on.
+
+<tt>rsql> .setup_example;</tt>
+
+ register :cleanup_example, %q{
+ DROP TEMPORARY TABLE IF EXISTS #{@rsql_table}
+ }, :desc => 'Cleans up the example table.'
+ 
+This is an example of a recipe that utilizes a Ruby block for running code to
+generate the SQL we eventually return.
+
+Here we are just populating the table (if it isn't already).
+
+<tt>rsql> .fill_table;</tt>
+
+Notice the use of the {RSQL::EvalContext#hexify} and {RSQL::EvalContext#squeeze!}
+helper methods.
+
+ register :fill_table, :desc => 'Populate the example table.' do
+     sql = ''
+     9.times do |i|
+         sql << %{
+ INSERT IGNORE INTO #{@rsql_table}
+    SET  name='fancy#{i}',
+        value=#{i**i},
+        stuff=#{hexify(rand((i+1)**100))};
+ }
+     end
+     # one more that isn't randomly generated so we can reference it later
+     sql << %{
+ INSERT IGNORE INTO #{@rsql_table}
+    SET  name='fancy9',
+        value=#{9**9},
+        stuff=0x1234567891234567891234567890;
+ }
+     squeeze!(sql)
+ end
+ 
+A very common reason for recipes is simply to add parameters to be dropped in
+to our query. To facilitate this, declare one or more variables immediately
+following the name of the recipe. These values can be listed by embedded
+interpolation points into the string (just as you would with any Ruby string).
+
+This call will simply return results only for those bigger than some value
+passed in.
+
+<tt>rsql> .get_big_values 80000;</tt>
+
+ register :get_big_values, :val, %q{
+ SELECT name, value FROM #{@rsql_table} WHERE #{val} <= value
+ }, :desc => 'Get values bigger than the one provided as an argument.'
+ 
+Sometimes we make mistakes (never!). Normally, the command history kept in
+RSQL only stores the last thing entered at the prompt--not any query that the
+previous command may have generated and invoked. When writing a recipe that
+generates a query that has an error reported by MySQL, it is really handy to
+see the generated SQL.
+
+Here's an example of a recipe that will fail. Run it and then hit the "up
+arrow" key to see the previous command.
+
+<tt>rsql> .bad_query;</tt>
+
+So the command in our history is the recipe and not the query. To see the
+query the {RSQL::EvalContext#history} has a helper method ready for us:
+
+<tt>rsql> .history;</tt>
+
+ register :bad_query, %q{
+ SELECT name, value FROM #{@rsql_table} WHERE valu < 10000
+ }, :desc => 'Make a query that will result in an error.'
+ 
+After you have a table with content in it, you can run queries against it and
+have the contents changed into something a little more meaningful. For
+example, what if the values in our table were bytes that we wanted to
+humanize? Try this command:
+
+<tt>rsql> select name, value from rsql_example ! value => humanize_bytes;</tt>
+
+The {RSQL::EvalContext#humanize_bytes} is another helper method. There are
+several others available. Check out the {RSQL::EvalContext} class for details.
+
+Additional mappings can be added, separated by commas.
+
+You can also declare these column mappings in your recipes, though the syntax
+is slightly different, using Ruby symbols.
+
+<tt>rsql> .show_values_as_bytes;</tt>
+
+ register :show_values_as_bytes, %q{
+ SELECT value FROM #{@rsql_table}
+ }, 'value' => :humanize_bytes,
+    :desc => 'Show values as humanized bytes.'
+ 
+It is even possible to make up your own column mapping helpers. Just create a
+Ruby method and reference it as a symbol mapped to whatever column the helper
+is expecting for content. The return of the helper will be replaced as the
+column entry's content. Your method is called once for each value in the
+column from the results.
+
+<tt>rsql> .show_pretty_names;</tt>
+
+Make sure if your method doesn't understand the content passed to it that it
+just reflects it back out so you don't lose data when printed.
+
+ def pretty_names(name)
+     if m = name.match(/^(\w+)(\d+)$/)
+         "#{m[1]} (#{m[2]})"
+     else
+         name
+     end
+ end
+ 
+ register :show_pretty_names, %q{
+ SELECT name FROM #{@rsql_table}
+ }, 'name' => :pretty_names,
+    :desc => 'Show names separated to be more readable.'
+ 
+It's also possible to work with the full set of query results in a recipe.
+This can be useful if there is some coordination necessary across multiple
+columns to result in some new kind of report. Much like a shell's ability to
+pipe output from one command to the next, RSQL takes a similar approach. Try
+this:
+
+<tt>rsql> select name, value from rsql_example | p @results;</tt>
+
+The {RSQL::EvalContext} class manages the results from a previous query in the
+<b><tt>@results</tt></b> member variable accessible by any Ruby recipe
+code. This is an instance of the {RSQL::MySQLResults} class. Below we make use
+of the {RSQL::MySQLResults#each_hash} method to walk over all rows. There are
+other helpful routines available.
+
+Here's an example that writes a simple report of the data we are working
+with. To try this out, enter the following at the prompt:
+
+<tt>rsql> select name, value from rsql_example | to_report;</tt>
+
+ register :to_report, :desc => 'Report on a count of small and big values.' do
+     small_cnt = 0
+     big_cnt   = 0
+     @results.each_hash do |row|
+         if row['value'].to_i < 10000
+             small_cnt +=1
+         else
+             big_cnt += 1
+         end
+     end
+     puts "There are #{small_cnt} small values and #{big_cnt} big values."
+ end
+ 
+There may be other moments where it's necessary to take arguments, say if we
+want to process results and keep our data around in a file.
+
+<tt>rsql> select name, value from rsql_example | save_values 'myobj';</tt>
+
+After running this, a <b><tt>myobj.yml</tt></b> file should be created in the
+local directory containing all the content from the query. To accomplish this,
+the {RSQL::EvalContext#safe_save} method is invoked which serializes our
+object so that we may later decided to run some post processing on the
+content.
+
+Inspect the YAML[http://www.yaml.org/] content written out:
+
+<tt>rsql> .puts IO.read('myobj.yml');</tt>
+
+ register :save_values, :desc => 'Save results from a query into a file.' do |fn|
+     myobj = {}
+     @results.each_hash do |row|
+         myobj[row['name']] = row['value']
+     end
+     safe_save(myobj, fn)
+ end
+ 
+Dealing with variable arguments is pretty straightforward as well, but with a
+little syntactic twist.
+
+<tt>rsql> .find_names 'fancy3', 'fancy8';</tt>
+
+Here we simply expand the arguments.
+
+ register :find_names, :'*names', %q{
+ SELECT name, value
+   FROM #{@rsql_table}
+  WHERE name IN (#{names.collect{|n| "'#{n}'"}.join(',')})
+ }, :desc => 'Find names from example table.'
+ 
+Sometimes it just isn't enough to be able to rely on generating SQL queries
+and piping into handlers. Sometimes we just need to roll up our sleeves and
+run queries directly so we can start processing results and dealing with
+presentation all on our own. That's where the {RSQL::EvalContext#query} helper
+comes in handy.
+
+The intention here is to just create a series of sentences out of two separate
+queries.
+
+<tt>rsql> .show_sentences;</tt>
+
+ register :show_sentences, :desc => 'Show results as sentences.' do
+     query("SELECT name FROM #{@rsql_table}").each_hash do |nrow|
+         name = nrow['name']
+         vals = query("SELECT value FROM #{@rsql_table} WHERE name='#{name}'")
+         puts "The #{name} has #{vals[0]['value']} fanciness levels."
+     end
+ end
+ 
+The {RSQL::MySQLResults} class built in to RSQL handles binary content
+gracefully, automatically converting it to something a little nicer to our
+consoles than just dumping it. It converts it into a hexadecimal string.
+
+<tt>rsql> SELECT stuff FROM rsql_example;</tt>
+
+The default is to limit the hex strings to 32 "bytes" reported. This can be
+configured any time by setting the <b><tt>@hexstr_limit</tt></b>.
+
+RSQL makes querying for hex strings from within a recipe easy too.
+
+<tt>rsql> .find_stuff 0x1234567891234567891234567890;</tt>
+
+ register :find_stuff, :stuff, %q{
+ SELECT * FROM #{@rsql_table} WHERE stuff=#{hexify stuff}
+ }, :desc => 'Find some hex stuff.'
+ 
+There are many other things to try out left as an "exercise for the
+reader". Browsing the {RSQL::EvalContext} and {RSQL::MySQLResults} classes
+would be an excellent start.
+ 
+
