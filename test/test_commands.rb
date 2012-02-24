@@ -70,21 +70,31 @@ class TestCommands < Test::Unit::TestCase
                      @strout.string.gsub(/\s+/,''))
     end
 
-    def test_bangs
+    def test_bang
         cmds = Commands.new('silly stuff ! this => that', :display_by_column)
         @conn.expects(:query).with('silly stuff').returns(nil)
         @conn.expects(:affected_rows).returns(13)
         @conn.expects(:reconnected?)
         cmds.run!(@ctx)
         assert_match(/Query OK, 13 rows affected/, @strout.string)
+    end
 
-        # now test logic to continue if it _doesn't_ look like a bang
+    def test_bang_with_no_map
         cmds = Commands.new('silly stuff ! more things', :display_by_column)
         @conn.expects(:query).with('silly stuff ! more things').returns(nil)
         @conn.expects(:affected_rows).returns(4)
         @conn.expects(:reconnected?)
         cmds.run!(@ctx)
         assert_match(/Query OK, 4 rows affected/, @strout.string)
+    end
+
+    def test_bang_with_pipe
+        cmds = Commands.new('silly stuff != this | puts @results.sql', :display_by_column)
+        @conn.expects(:query).with('silly stuff != this').returns(nil)
+        @conn.expects(:affected_rows).returns(21)
+        @conn.expects(:reconnected?)
+        cmds.run!(@ctx)
+        assert_match("silly stuff != this\n", @strout.string)
     end
 
 end # class TestCommands

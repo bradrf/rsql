@@ -70,6 +70,7 @@ module RSQL
                     esc = ''
                 end
 
+                found_maps = false
                 if match_before_bang
                     new_bangs = {}
                     match.split(/\s*,\s*/).each do |ent|
@@ -78,20 +79,23 @@ module RSQL
                             # they are using a bang but have no maps
                             # so we assume this is a != or something
                             # similar and let it go through unmapped
-                            esc = match_before_bang + '!' + match
+                            match = match_before_bang + '!' + match
                             match_before_bang = nil
-                            break
-                        end
-                        if val.strip == 'nil'
-                            new_bangs[key.strip] = nil
                         else
-                            new_bangs[key.strip] = val.to_sym
+                            found_maps = true
+                            if val.strip == 'nil'
+                                new_bangs[key.strip] = nil
+                            else
+                                new_bangs[key.strip] = val.to_sym
+                            end
                         end
                     end
-                    next unless match_before_bang
-                    match = match_before_bang
-                    match_before_bang = nil
-                    bangs.merge!(new_bangs)
+                    if found_maps
+                        next unless match_before_bang
+                        match = match_before_bang
+                        match_before_bang = nil
+                        bangs.merge!(new_bangs)
+                    end
                 end
 
                 if sep == ?!
