@@ -1,7 +1,5 @@
 = RSQL
 
-consider how we might add javascript here (raw html support in rdoc?) to link with google stats/trends
-
 Homepage:: https://rubygems.org/gems/rsql
 
 == DESCRIPTION
