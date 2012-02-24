@@ -23,6 +23,7 @@ class TestCommands < Test::Unit::TestCase
         @ctx = EvalContext.new
         @conn = mock('Mysql')
         @conn.expects(:list_dbs).returns([])
+        @conn.expects(:reconnect=)
         MySQLResults.conn = @conn
     end
 
@@ -42,6 +43,7 @@ class TestCommands < Test::Unit::TestCase
         cmds = Commands.new('do some silly stuff', :display_by_column)
         @conn.expects(:query).with(instance_of(String)).returns(nil)
         @conn.expects(:affected_rows).returns(1)
+        @conn.expects(:reconnected?)
         cmds.run!(@ctx)
         assert_match(/Query OK, 1 row affected/, @strout.string)
     end
@@ -61,6 +63,7 @@ class TestCommands < Test::Unit::TestCase
     def test_multiple
         @conn.expects(:query).with('one thing').returns(nil)
         @conn.expects(:affected_rows).returns(1)
+        @conn.expects(:reconnected?)
         cmds = Commands.new('. "one thing" ; . puts :hello.inspect', :display_by_column)
         cmds.run!(@ctx)
         assert_match(/^QueryOK,1rowaffected\(\d+.\d+sec\):hello$/,
@@ -71,6 +74,7 @@ class TestCommands < Test::Unit::TestCase
         cmds = Commands.new('silly stuff ! this => that', :display_by_column)
         @conn.expects(:query).with('silly stuff').returns(nil)
         @conn.expects(:affected_rows).returns(13)
+        @conn.expects(:reconnected?)
         cmds.run!(@ctx)
         assert_match(/Query OK, 13 rows affected/, @strout.string)
 
@@ -78,6 +82,7 @@ class TestCommands < Test::Unit::TestCase
         cmds = Commands.new('silly stuff ! more things', :display_by_column)
         @conn.expects(:query).with('silly stuff ! more things').returns(nil)
         @conn.expects(:affected_rows).returns(4)
+        @conn.expects(:reconnected?)
         cmds.run!(@ctx)
         assert_match(/Query OK, 4 rows affected/, @strout.string)
     end

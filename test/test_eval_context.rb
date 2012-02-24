@@ -22,6 +22,8 @@ class TestEvalContext < Test::Unit::TestCase
         @conn.expects(:list_dbs).returns([])
         @conn.expects(:query).with(instance_of(String)).returns(nil)
         @conn.expects(:affected_rows).returns(0)
+        @conn.expects(:reconnect=)
+        @conn.expects(:reconnected?)
         MySQLResults.conn = @conn
         @ctx = EvalContext.new
         @ctx.load(File.join(File.dirname(__FILE__),'..','example.rsqlrc'))
@@ -32,6 +34,7 @@ class TestEvalContext < Test::Unit::TestCase
         $stdout = out = StringIO.new
         @conn.expects(:query).with(instance_of(String)).returns(nil)
         @conn.expects(:affected_rows).returns(0)
+        @conn.expects(:reconnected?)
         @ctx.safe_eval('reload', nil, out)
         assert_match(/loaded: .+?example.rsqlrc/, out.string)
     ensure

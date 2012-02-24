@@ -24,6 +24,7 @@ class TestMySQLResults < Test::Unit::TestCase
     def test_databases
         assert_equal([], MySQLResults.databases)
         conn = mock('Mysql')
+        conn.expects(:reconnect=)
         conn.expects(:list_dbs).returns(['accounts'])
         conn.expects(:select_db)
         conn.expects(:list_tables).returns([])
@@ -36,6 +37,7 @@ class TestMySQLResults < Test::Unit::TestCase
         MySQLResults.reset_cache
 
         conn = mock('Mysql')
+        conn.expects(:reconnect=)
         conn.expects(:list_dbs).returns(['accounts'])
         conn.expects(:select_db)
         conn.expects(:list_tables).returns(['users','groups'])
@@ -51,6 +53,7 @@ class TestMySQLResults < Test::Unit::TestCase
         assert_equal([], MySQLResults.complete(nil))
 
         conn = mock('Mysql')
+        conn.expects(:reconnect=)
         conn.expects(:list_dbs).returns(['Accounts','Devices','Locations'])
         conn.expects(:select_db).times(3)
         tbls = sequence(:tbls)
@@ -87,9 +90,11 @@ class TestMySQLResults < Test::Unit::TestCase
         res.expects(:fetch_row).in_sequence(rows).returns(nil)
 
         conn = mock('Mysql')
+        conn.expects(:reconnect=)
         conn.expects(:list_dbs).returns([])
         conn.expects(:query).with(instance_of(String)).returns(res)
         conn.expects(:affected_rows).returns(1)
+        conn.expects(:reconnected?)
         MySQLResults.conn = conn
 
         bangs = mock('bangs')
@@ -145,9 +150,11 @@ class TestMySQLResults < Test::Unit::TestCase
         res.expects(:fetch_row).in_sequence(rows).returns(nil)
 
         conn = mock('Mysql')
+        conn.expects(:reconnect=)
         conn.stubs(:list_dbs).returns([])
         conn.stubs(:query).with(instance_of(String)).returns(res)
         conn.stubs(:affected_rows).returns(1)
+        conn.expects(:reconnected?).times(4)
         MySQLResults.reset_history
         MySQLResults.conn = conn
 

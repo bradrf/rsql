@@ -67,7 +67,9 @@ module RSQL
             # implicitly resets the name cache.
             #
             def conn=(conn)
-                @@conn = conn
+                if @@conn = conn
+                    @@conn.reconnect = true
+                end
                 reset_cache
             end
 
@@ -197,6 +199,13 @@ module RSQL
             # Get results from a query.
             #
             def query(sql, eval_context, raw=false, max_rows=@@max_rows)
+                if @@conn.reconnected?
+                    # make sure we stick with the user's last database in case
+                    # we had to reconnect (probably because the query thread was
+                    # killed
+                    @@conn.select_db(@@database_name) if @@database_name
+                end
+
                 @@history.shift if @@max_history <= @@history.size 
                 @@history << sql
 

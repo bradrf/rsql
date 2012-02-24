@@ -5,7 +5,7 @@
 # information.
 #
 module RSQL
-    VERSION = '0.2.10'
+    VERSION = '0.2.11'
 
     require 'rsql/mysql_results'
     require 'rsql/eval_context'

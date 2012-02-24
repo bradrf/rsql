@@ -29,7 +29,6 @@ end
 
 task :rdoc => 'example.rsqlrc.rdoc'
 task :gem  => 'example.rsqlrc.rdoc'
-CLOBBER.include 'example.rsqlrc.rdoc'
 
 Rake::RDocTask.new do |rd|
     rd.rdoc_dir = 'doc'

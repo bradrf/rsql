@@ -270,6 +270,39 @@ end
 
 MySQLResults.max_rows ||= opts.batch_output ? 5000 : 1000
 
+# all children processes we need to clean up
+child_pids = []
+
+# a file that we can leverage as a poor-man's IPC between the ssh process during
+# setup and then with the mysql "kill" process
+ipc_fn = File.join(Dir.tmpdir, "rsql_ipc_#{$$}")
+
+at_exit do
+    child_pids.each do |pid|
+        begin
+            Process.kill('TERM', pid)
+            killed = false
+            5.times do
+                if Process.waitpid(pid, Process::WNOHANG)
+                    killed = true
+                    break
+                end
+                sleep 1
+            end
+            Process.kill('KILL', pid) unless killed
+        rescue Errno::ESRCH
+            # do nothing, process is already gone
+        rescue Exception => ex
+            if opts.verbose
+                $stderr.puts("#{ex.class}: #{ex.message}", ex.backtrace)
+            else
+                $stderr.puts(ex.message)
+            end
+        end
+    end
+    File.unlink(ipc_fn) if File.exists?(ipc_fn)
+end
+
 if opts.ssh_host
 
     # might need to open an idle channel here so server doesn't close on
@@ -286,10 +319,6 @@ if opts.ssh_host
     # nature of its calls interfering with the pure ruby ssh
     # calls...so we'll run ssh in the background since its only
     # purpose is to forward us in for accessing the mysql server
-
-    # we'll use a poor-man's ipc to determine when the ssh process is
-    # ready
-    ipc_fn = File.join(Dir.tmpdir, "rsql_ssh_#{$$}.pid")
 
     ssh = nil
     ssh_pid = Process.fork do
@@ -347,40 +376,14 @@ if opts.ssh_host
         end
     end
 
-    at_exit do
-        if ssh_pid && 0 <= ssh_pid
-            begin
-                Process.kill('TERM', ssh_pid)
-                killed = false
-                5.times do
-                    if Process.waitpid(ssh_pid, Process::WNOHANG)
-                        killed = true
-                        break
-                    end
-                    sleep 1
-                end
-                Process.kill('KILL', ssh_pid) unless killed
-            rescue Errno::ESRCH
-                # do nothing, process is already gone
-            rescue Exception => ex
-                if opts.verbose
-                    $stderr.puts("#{ex.class}: #{ex.message}", ex.backtrace)
-                else
-                    $stderr.puts(ex.message)
-                end
-            end
-        end
-        File.unlink(ipc_fn) if File.exists?(ipc_fn)
-    end
+    child_pids << ssh_pid
 
     ipc_state = ''
     15.times do
         sleep(1)
-        File.open(ipc_fn,'r'){|f| ipc_state = f.gets.strip}
+        ipc_state = IO.read(ipc_fn).strip
         break if ipc_state == 'ready' || ipc_state == 'fail'
     end
-
-    File.unlink(ipc_fn)
 
     unless ipc_state == 'ready'
         # give the child time to exit
@@ -402,7 +405,6 @@ mysql_conn = "#{opts.mysql_host}:#{opts.remote_mysql_port || opts.mysql_port}"
 begin
     MySQLResults.conn = Mysql.new(opts.mysql_host, opts.mysql_user, opts.mysql_password,
                                   MySQLResults.database_name, opts.mysql_port)
-    MySQLResults.conn.reconnect = true
     puts 'connected' unless opts.batch_output
 rescue Mysql::Error => ex
     if ex.message.include?('Client does not support authentication')
@@ -426,8 +428,6 @@ rescue Exception => ex
     exit 1
 end
 
-eval_context.call_init_registrations
-
 history_fn = File.join(ENV['HOME'], ".#{bn}_history")
 if File.exists?(history_fn) && 0 < File.size(history_fn)
     YAML.load_file(history_fn).each {|i| Readline::HISTORY.push(i)}
@@ -436,9 +436,17 @@ end
 Readline.completion_proc = eval_context.method(:complete)
 
 cmd_thread = Thread.new do
+    mysql_tid = nil
     me = Thread.current
     me[:shutdown] = false
     until me[:shutdown] do
+        if mysql_tid != MySQLResults.conn.thread_id
+            # update the thread id for the mysql kill process
+            mysql_tid = MySQLResults.conn.thread_id
+            File.open(ipc_fn,'w'){|f| f.puts(mysql_tid)}
+            eval_context.call_init_registrations
+        end
+
         default_displayer = :display_by_column
         if opts.batch_input
             default_displayer = :display_by_batch if opts.batch_output
@@ -466,6 +474,7 @@ cmd_thread = Thread.new do
                 prompt = ''
             end
             if input.nil? || me[:shutdown]
+                me[:shutdown] = true
                 puts
                 break
             end
@@ -484,33 +493,32 @@ cmd_thread = Thread.new do
     end
 end
 
-# keep a secondary connection to allow us to kill off a running query
-kill_conn = Mysql.new(opts.mysql_host, opts.mysql_user, opts.mysql_password,
-                      MySQLResults.database_name, opts.mysql_port)
-opts.delete_field(:mysql_password)
-
-Signal.trap('INT') do
-    # emulate MySQL's behavior
-    if MySQLResults.conn && MySQLResults.conn.busy?
-        tid = MySQLResults.conn.thread_id
-        $stderr.puts "Ctrl-C -- sending \"KILL QUERY #{tid}\" to server..."
-        kill_conn.kill(tid)
-        10.times do
-            break unless MySQLResults.conn.busy?
-            sleep(0.5)
+kill_pid = Process.fork do
+    # keep a secondary connection to allow us to kill off a running query in a
+    # subprocess so we don't get bound up by the main process trying to deal
+    # with results
+    kill_conn = Mysql.new(opts.mysql_host, opts.mysql_user, opts.mysql_password, nil, opts.mysql_port)
+    Signal.trap('TERM'){Kernel.exit!}
+    Signal.trap('INT') do
+        mysql_tid = IO.read(ipc_fn).strip.to_i
+        is_busy = false
+        kill_conn.list_processes.each do |row|
+            if row[0].to_i == mysql_tid && row[4] != 'Sleep'
+                $stderr.puts "Ctrl-C -- sending \"KILL QUERY #{mysql_tid}\" to server..."
+                kill_conn.kill(mysql_tid)
+                break
+            end
         end
-        MySQLResults.conn.select_db(MySQLResults.database_name)
-        eval_context.call_init_registrations
-    else
-        $stderr.puts 'Ctrl-C -- exit!'
-        cmd_thread[:shutdown] = true
-        sleep(0.3)
-        cmd_thread.kill
     end
+    loop{sleep 0x7fffffff}
 end
 
+child_pids << kill_pid
+opts.delete_field(:mysql_password)
+Signal.trap('INT', nil)
+
 Signal.trap('CHLD') do
-    unless opts.batch_output
+    if ssh_pid && !opts.batch_output && !cmd_thread[:shutdown]
         $stderr.puts "SSH child (#{ssh_pid}) stopped--shutting down..."
     end
     if MySQLResults.conn && MySQLResults.conn.busy?
