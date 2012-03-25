@@ -76,9 +76,11 @@ class TestMySQLResults < Test::Unit::TestCase
         f1 = mock('f1')
         f1.expects(:name).returns('c1').times(12)
         f1.expects(:type).returns(1).times(2)
+        f1.stubs(:is_num?).returns(false)
         f2 = mock('f2')
         f2.expects(:name).returns('c2').times(11)
         f2.expects(:type).returns(1).times(2)
+        f2.stubs(:is_num?).returns(false)
 
         res = mock('results')
         res.expects(:num_rows).returns(2).times(2)
@@ -136,9 +138,11 @@ class TestMySQLResults < Test::Unit::TestCase
         f1 = mock('f1')
         f1.stubs(:name).returns('c1')
         f1.stubs(:type).returns(1)
+        f1.stubs(:is_num?).returns(false)
         f2 = mock('f2')
         f2.stubs(:name).returns('c2')
         f2.stubs(:type).returns(1)
+        f2.stubs(:is_num?).returns(false)
 
         res = mock('results')
         res.stubs(:num_rows).returns(2)

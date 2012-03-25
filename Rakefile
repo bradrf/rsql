@@ -55,13 +55,14 @@ end
 spec = Gem::Specification.new do |s|
     rsql_version = nil
     File.open("lib/rsql.rb").each do |line|
-        if line =~ /VERSION\s*=\s*'([^']+)'/
+        if line =~ /VERSION\s*= \[(\d+,\d+,\d+)\]/
             rsql_version = $1
             break
         end
     end
+    throw 'no version found' unless rsql_version
     s.name        = 'rsql'
-    s.version     = rsql_version
+    s.version     = rsql_version.gsub(',','.')
     s.author      = 'Brad Robel-Forrest'
     s.email       = 'brad+rsql@gigglewax.com'
     s.summary     = 'Ruby-based MySQL command line with recipes.'

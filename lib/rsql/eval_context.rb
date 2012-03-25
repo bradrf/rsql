@@ -609,7 +609,7 @@ EOF
             # Convert a number of bytes into a human readable string.
             #
             def humanize_bytes(bytes) # :doc:
-                abbrev = ['B ','KB','MB','GB','TB','PB','EB','ZB','YB']
+                abbrev = ['B','KB','MB','GB','TB','PB','EB','ZB','YB']
                 bytes = bytes.to_i
                 fmt = '%7.2f'
 

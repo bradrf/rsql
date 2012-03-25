@@ -63,8 +63,8 @@ module RSQL
             #
             def conn; @@conn; end
 
-            # Set the underlying MySQL connection object to use which
-            # implicitly resets the name cache.
+            # Set the underlying MySQL connection object to use which implicitly
+            # resets the name cache.
             #
             def conn=(conn)
                 if @@conn = conn
@@ -73,23 +73,21 @@ module RSQL
                 reset_cache
             end
 
-            # Get the field separator to use when writing rows in
-            # columns.
+            # Get the field separator to use when writing rows in columns.
             #
             def field_separator; @@field_separator; end
 
-            # Set the field separator to use when writing rows in
-            # columns.
+            # Set the field separator to use when writing rows in columns.
             #
             def field_separator=(sep); @@field_separator = sep; end
 
-            # Get the maximum number of rows to process before
-            # throwing a MaxRowsException.
+            # Get the maximum number of rows to process before throwing a
+            # MaxRowsException.
             #
             def max_rows; @@max_rows; end
 
-            # Set the maximum number of rows to process before
-            # throwing a MaxRowsException.
+            # Set the maximum number of rows to process before throwing a
+            # MaxRowsException.
             #
             def max_rows=(cnt); @@max_rows = cnt; end
 
@@ -131,8 +129,8 @@ module RSQL
                 @@name_cache.keys.sort
             end
 
-            # Get the list of tables available for the current
-            # database or a specific one.
+            # Get the list of tables available for the current database or a
+            # specific one.
             #
             def tables(database=@@database_name)
                 @@name_cache[database] || []
@@ -215,16 +213,16 @@ module RSQL
 
                 affected_rows = @@conn.affected_rows
                 unless results && 0 < results.num_rows
-                    return new(sql, elapsed, affected_rows)
+                    return new(nil, nil, affected_rows, sql, elapsed)
                 end
 
                 if max_rows < results.num_rows
                     raise MaxRowsException.new(results.num_rows, max_rows)
                 end
 
-                # extract mysql results into our own table so we can predetermine the
-                # lengths of columns and give users a chance to reformat column data
-                # before it's displayed (via the bang maps)
+                # extract mysql results into our own table so we can
+                # predetermine the lengths of columns and give users a chance to
+                # reformat column data before it's displayed (via the bang maps)
 
                 fields = results.fetch_fields
                 fields.collect! do |field|
@@ -238,27 +236,31 @@ module RSQL
                 while vals = results.fetch_row
                     row = []
                     fields.each_with_index do |field, i|
-                        if raw
-                            val = vals[i]
-                        else
-                            val = eval_context.bang_eval(field.name, vals[i])
+                        val = vals[i]
+                        orig_vlen = val.respond_to?(:length) ? val.length : 0
+                        if val && field.is_num?
+                            val = field.decimals == 0 ? val.to_i : val.to_f
+                        end
+                        unless raw
+                            val = eval_context.bang_eval(field.name, val)
                             if val.nil?
                                 val = 'NULL'
                             elsif HEX_RANGE.include?(field.type) && val =~ /[^[:print:]\s]/
                                 val = eval_context.to_hexstr(val)
                             end
                         end
-                        vlen = val.respond_to?(:length) ? val.length : 0
+                        vlen = val.respond_to?(:length) ? val.length : orig_vlen
                         if field.longest_length < vlen
                             if String === val
-                                # consider only the longest line length since some
-                                # output contains multiple lines like "show create table"
+                                # consider only the longest line length since
+                                # some output contains multiple lines like "show
+                                # create table"
                                 longest_line = val.split(/\r?\n/).collect{|l|l.length}.max
                                 if field.longest_length < longest_line
                                     field.longest_length = longest_line
                                 end
                             else
-                                field.longest_length = val.length
+                                field.longest_length = vlen
                             end
                         end
                         row << val
@@ -266,26 +268,26 @@ module RSQL
                     results_table << row
                 end
 
-                return new(sql, elapsed, affected_rows, fields, results_table)
+                return new(fields, results_table, affected_rows, sql, elapsed)
             end
 
         end # class << self
 
         ########################################
 
-        def initialize(sql, elapsed, affected_rows,
-                       fields=nil, table=nil, field_separator=@@field_separator)
-            @sql             = sql;
-            @elapsed         = elapsed;
-            @affected_rows   = affected_rows;
+        def initialize(fields, table, affected_rows=nil, sql=nil, elapsed=nil,
+                       field_separator=@@field_separator)
+
             @fields          = fields
             @table           = table
+            @affected_rows   = affected_rows || table.size
+            @sql             = sql
+            @elapsed         = elapsed
             @field_separator = field_separator
 
-            # we set this here so that (a) it occurs _after_ we are
-            # successful and so we can show an appropriate messge in a
-            # displayer
-            if @sql.match(/use\s+(\S+)/i)
+            # we set this here so that (a) it occurs _after_ we are successful
+            # and so we can show an appropriate messge in a displayer
+            if @sql && @sql.match(/use\s+(\S+)/i)
                 @database_changed = true
                 @@database_name = $1
             end
@@ -321,15 +323,40 @@ module RSQL
             @table ? @table.size : 0
         end
 
+        # Convenience helper to grab the value in the very first entry for those
+        # times when the query only has one expected value returned.
+        #
+        def scalar
+            self[0,0]
+        end
+
+        # Get an entire row as a hash or a single value from the table of
+        # results. The value of row_j may be an integer index or a string column
+        # name.
+        #
+        def [](row_i, row_j=nil)
+            if @table
+                if row = @table[row_i]
+                    if row_j
+                        return row[row_j] if Integer === row_j
+                        if row_j = @fields.index{|f| f.name == row_j}
+                            return row[row_j]
+                        end
+                    else
+                        hash = {}
+                        @fields.each_with_index{|f,i| hash[f.name] = row[i]}
+                        return hash
+                    end
+                end
+            end
+            return nil
+        end
+
         # Get a row from the table hashed with the field names.
         #
-        def [](index)
-            if !@fields || !@table
-                return nil
-            end
-            if row = @table[index]
-                hash = {}
-                @fields.each_with_index {|f,i| hash[f.name] = row[i]}
+        def row_hash(row_i)
+            return nil unless @fields && @table
+            if row = @table[row_i]
                 return hash
             else
                 return nil
@@ -341,6 +368,32 @@ module RSQL
         def each_hash(&block)
             if @table
                 @table.each do |row|
+                    hash = {}
+                    @fields.each_with_index {|f,i| hash[f.name] = row[i]}
+                    yield(hash)
+                end
+            end
+        end
+
+        # Merge all values of another set of results. Requires that the same set
+        # of fields are available.
+        #
+        def merge!(results)
+            if @fields != results.fields
+                throw ArgumentError.new('Fields must be identical')
+            end
+            @table << results.table
+            @affected_rows += results.affected_rows
+            @sql << ';' << results.sql
+            @elapsed += elapsed
+            self
+        end
+
+        # Conditionally delete rows from the results.
+        #
+        def delete_if(&block)
+            if @table
+                @table.delete_if do |row|
                     hash = {}
                     @fields.each_with_index {|f,i| hash[f.name] = row[i]}
                     yield(hash)

@@ -21,6 +21,16 @@
 
 module RSQL
 
+    # FIXME:
+    #
+    # select Count(*) from BcheckResults where LastResult != 'Succeeded' and LastResultTime > DATE_SUB(UTC_TIMESTAMP, INTERVAL 1 DAY);
+    # NoMethodError: undefined method `+' for nil:NilClass
+    # /usr/lib/ruby/gems/1.8/gems/rsql-0.2.11/lib/rsql/commands.rb:82:in `initialize'
+    # /usr/lib/ruby/gems/1.8/gems/rsql-0.2.11/bin/rsql:535:in `join'
+    # /usr/lib/ruby/gems/1.8/gems/rsql-0.2.11/bin/rsql:535
+    # /bin/rsql:19:in `load'
+    # /bin/rsql:19
+
     require 'stringio'
 
     EvalResults = Struct.new(:value, :stdout)
