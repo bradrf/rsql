@@ -204,7 +204,7 @@ module RSQL
                     @@conn.select_db(@@database_name) if @@database_name
                 end
 
-                @@history.shift if @@max_history <= @@history.size 
+                @@history.shift if @@max_history <= @@history.size
                 @@history << sql
 
                 start   = Time.now.to_f
@@ -225,12 +225,7 @@ module RSQL
                 # reformat column data before it's displayed (via the bang maps)
 
                 fields = results.fetch_fields
-                fields.collect! do |field|
-                    def field.longest_length=(len); @longest_length = len; end
-                    def field.longest_length; @longest_length; end
-                    field.longest_length = field.name.length
-                    field
-                end
+                extend_fields!(fields)
 
                 results_table = []
                 while vals = results.fetch_row
@@ -249,20 +244,7 @@ module RSQL
                                 val = eval_context.to_hexstr(val)
                             end
                         end
-                        vlen = val.respond_to?(:length) ? val.length : orig_vlen
-                        if field.longest_length < vlen
-                            if String === val
-                                # consider only the longest line length since
-                                # some output contains multiple lines like "show
-                                # create table"
-                                longest_line = val.split(/\r?\n/).collect{|l|l.length}.max
-                                if field.longest_length < longest_line
-                                    field.longest_length = longest_line
-                                end
-                            else
-                                field.longest_length = vlen
-                            end
-                        end
+                        update_longest!(field, val, orig_vlen)
                         row << val
                     end
                     results_table << row
@@ -270,6 +252,43 @@ module RSQL
 
                 return new(fields, results_table, affected_rows, sql, elapsed)
             end
+
+            ########################################
+            private
+
+                def extend_fields!(fields)
+                    fields.collect! do |field|
+                        def field.name; to_s; end unless field.respond_to?(:name)
+                        def field.longest_length=(len); @longest_length = len; end
+                        def field.longest_length; @longest_length; end
+                        field.longest_length = field.name.length
+                        field
+                    end
+                end
+
+                def update_longest!(field, val, default_vlen=nil)
+                    vlen = if val.respond_to?(:length)
+                               val.length
+                           elsif default_vlen
+                               default_vlen
+                           else
+                               val.to_s.length
+                           end
+
+                    if field.longest_length < vlen
+                        if String === val
+                            # consider only the longest line length since some
+                            # output contains multiple lines like "show create
+                            # table"
+                            longest_line = val.split(/\r?\n/).collect{|l|l.length}.max
+                            if field.longest_length < longest_line
+                                field.longest_length = longest_line
+                            end
+                        else
+                            field.longest_length = vlen
+                        end
+                    end
+                end
 
         end # class << self
 
@@ -285,11 +304,23 @@ module RSQL
             @elapsed         = elapsed
             @field_separator = field_separator
 
-            # we set this here so that (a) it occurs _after_ we are successful
-            # and so we can show an appropriate messge in a displayer
+            # we set this here so that it occurs _after_ we are successful and
+            # so we can show an appropriate messge in a displayer
             if @sql && @sql.match(/use\s+(\S+)/i)
                 @database_changed = true
                 @@database_name = $1
+            end
+
+            # if we're not given fields from a query we need to find the column
+            # widths
+            if @fields && @table && @fields.size > 0 &&
+                    !@fields.first.respond_to?(:longest_length)
+                self.class.send(:extend_fields!, @fields)
+                @table.each do |row|
+                    @fields.each_with_index do |field, i|
+                        self.class.send(:update_longest!, field, row[i])
+                    end
+                end
             end
         end
 
@@ -511,19 +542,20 @@ module RSQL
         # Show a summary line of the results.
         #
         def display_stats(io=$stdout, hdr='')
+            estr = @elapsed ? " (#{'%0.2f'%@elapsed} sec)" : ''
             if @table
                 if @database_changed
                     io.puts(hdr, "Database changed");
                     hdr = ''
                 end
                 s = 1 == @table.size ? 'row' : 'rows'
-                io.puts(hdr, "#{@table.size} #{s} in set (#{'%0.2f'%@elapsed} sec)")
+                io.puts(hdr, "#{@table.size} #{s} in set#{estr}")
             else
                 if @database_changed
                     io.puts(hdr, "Database changed");
                 else
                     s = 1 == @affected_rows ? 'row' : 'rows'
-                    io.puts(hdr, "Query OK, #{@affected_rows} #{s} affected (#{'%0.2f'%@elapsed} sec)")
+                    io.puts(hdr, "Query OK, #{@affected_rows} #{s} affected#{estr}")
                 end
             end
         end

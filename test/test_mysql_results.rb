@@ -77,10 +77,13 @@ class TestMySQLResults < Test::Unit::TestCase
         f1.expects(:name).returns('c1').times(12)
         f1.expects(:type).returns(1).times(2)
         f1.stubs(:is_num?).returns(false)
+        f1.stubs(:longest_length)
+
         f2 = mock('f2')
         f2.expects(:name).returns('c2').times(11)
         f2.expects(:type).returns(1).times(2)
         f2.stubs(:is_num?).returns(false)
+        f2.stubs(:longest_length)
 
         res = mock('results')
         res.expects(:num_rows).returns(2).times(2)
@@ -134,15 +137,30 @@ class TestMySQLResults < Test::Unit::TestCase
                      dout.string.gsub(/\s+/,''))
     end
 
+    def test_init
+        mres = MySQLResults.new([], [])
+        assert_equal(0, mres.num_rows)
+
+        mres = MySQLResults.new(['col1', 'col2'], [[1,2], [3,4]])
+        assert_equal(2, mres.num_rows)
+        dout = StringIO.new
+        mres.display_by_column(dout)
+        assert_equal('col1col2----------1234----------2rowsinset',
+                     dout.string.gsub(/\s+/,''))
+    end
+
     def test_grep
         f1 = mock('f1')
         f1.stubs(:name).returns('c1')
         f1.stubs(:type).returns(1)
         f1.stubs(:is_num?).returns(false)
+        f1.stubs(:longest_length)
+
         f2 = mock('f2')
         f2.stubs(:name).returns('c2')
         f2.stubs(:type).returns(1)
         f2.stubs(:is_num?).returns(false)
+        f2.stubs(:longest_length)
 
         res = mock('results')
         res.stubs(:num_rows).returns(2)
