@@ -125,7 +125,7 @@ module RSQL
             if Exception === ret
                 @loaded_fns_state[fn] = :failed
                 if @verbose
-                    $stderr.puts("#{ex.class}: #{ex.message}", ex.backtrace)
+                    $stderr.puts("#{ret.class}: #{ret.message}", ex.backtrace)
                 else
                     bt = ret.backtrace.collect{|line| line.start_with?(fn) ? line : nil}.compact
                     $stderr.puts("#{ret.class}: #{ret.message}", bt, '')
@@ -513,15 +513,57 @@ EOF
                 nil
             end
 
-            # Call MySQLResults#grep to remove (or show) only those lines that
-            # have content matching the patterrn.
+            # Remove all rows that do NOT match the expression. Returns true if
+            # any matches were found.
             #
-            def grep(*args) # :doc:
-                if @results.grep(*args)
-                    @results
-                else
-                    $stderr.puts 'No matches found'
+            # Options:
+            #   :fixed   => indicates that the string should be escaped of any
+            #               special characters
+            #   :nocolor => will not add color escape codes to indicate the
+            #               match
+            #   :inverse => reverses the regular expression match
+            #
+            def grep(pattern, *gopts) # :doc:
+                nocolor = gopts.include?(:nocolor)
+
+                if inverted = gopts.include?(:inverse)
+                    # there's no point in coloring matches we are removing
+                    nocolor = true
                 end
+
+                if gopts.include?(:fixed)
+                    regexp = Regexp.new(/#{Regexp.escape(pattern.to_str)}/)
+                elsif Regexp === pattern
+                    regexp = pattern
+                else
+                    regexp = Regexp.new(/#{pattern.to_str}/)
+                end
+
+                rval = inverted
+
+                @results.delete_if do |row|
+                    matched = false
+                    row.each do |val|
+                        val = val.to_s unless String === val
+                        if nocolor
+                            if matched = !val.match(regexp).nil?
+                                rval = inverted ? false : true
+                                break
+                            end
+                        else
+                            # in the color case, we want to colorize all hits in
+                            # all columns, so we can't early terminate our
+                            # search
+                            if val.gsub!(regexp){|m| "\e[31;1m#{m}\e[0m"}
+                                matched = true
+                                rval = inverted ? false : true
+                            end
+                        end
+                    end
+                    inverted ? matched : !matched
+                end
+
+                return rval
             end
 
             # Register bangs to evaluate on all displayers as long as a column
@@ -609,7 +651,7 @@ EOF
             # Convert a number of bytes into a human readable string.
             #
             def humanize_bytes(bytes) # :doc:
-                abbrev = ['B','KB','MB','GB','TB','PB','EB','ZB','YB']
+                abbrev = ['B ','KB','MB','GB','TB','PB','EB','ZB','YB']
                 bytes = bytes.to_i
                 fmt = '%7.2f'
 

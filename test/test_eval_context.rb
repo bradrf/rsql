@@ -179,4 +179,39 @@ class TestEvalContext < Test::Unit::TestCase
         File.unlink(tf+'~') if File.exists?(tf+'~')
     end
 
+    def test_grep
+        out = StringIO.new
+
+        res = [[11,'one$'],[12,'one and two'],[13,'four and none']]
+        @ctx.safe_eval('grep "two"', res, out)
+        assert(out.string.empty?)
+        assert_equal([[12,"one and \e[31;1mtwo\e[0m"]], res)
+
+        res = [[11,'one'],[12,'one and two'],[13,'four and none']]
+        out = StringIO.new
+        @ctx.safe_eval('grep /four/, :nocolor', res, out)
+        assert(out.string.empty?)
+        assert_equal([[13,'four and none']], res)
+
+        res = [[11,'one'],[12,'one and two'],[13,'four and none']]
+        out = StringIO.new
+        @ctx.safe_eval('grep "and", :inverse, :fixed', res, out)
+        assert(out.string.empty?)
+        assert_equal([[11,'one']], res)
+    end
+
+    def test_help
+        out = StringIO.new
+        @ctx.safe_eval('help', nil, out)
+        assert_match(/only rows/, out.string)
+    end
+
+    def test_exception
+        orig_err = $stderr
+        $stderr = err = StringIO.new
+        @ctx.safe_eval('this should fail', nil, nil)
+        $stderr = orig_err
+        assert_match(/test_eval_context.rb/, err.string)
+    end
+
 end # class TestEvalContext

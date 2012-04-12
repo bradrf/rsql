@@ -383,17 +383,6 @@ module RSQL
             return nil
         end
 
-        # Get a row from the table hashed with the field names.
-        #
-        def row_hash(row_i)
-            return nil unless @fields && @table
-            if row = @table[row_i]
-                return hash
-            else
-                return nil
-            end
-        end
-
         # Iterate through each row of the table hashed with the field names.
         #
         def each_hash(&block)
@@ -406,85 +395,21 @@ module RSQL
             end
         end
 
-        # Merge all values of another set of results. Requires that the same set
-        # of fields are available.
-        #
-        def merge!(results)
-            if @fields != results.fields
-                throw ArgumentError.new('Fields must be identical')
-            end
-            @table << results.table
-            @affected_rows += results.affected_rows
-            @sql << ';' << results.sql
-            @elapsed += elapsed
-            self
-        end
-
         # Conditionally delete rows from the results.
         #
-        def delete_if(&block)
+        def delete_if(opts=nil, &block)
             if @table
                 @table.delete_if do |row|
-                    hash = {}
-                    @fields.each_with_index {|f,i| hash[f.name] = row[i]}
-                    yield(hash)
-                end
-            end
-        end
-
-        # Remove all rows that do NOT match the expression. Returns true if any
-        # matches were found.
-        #
-        # Options:
-        #   :fixed   => indicates that the string should be escaped of any special characters
-        #   :nocolor => will not add color escape codes to indicate the match
-        #   :inverse => reverses the regular expression match
-        #
-        def grep(pattern, *gopts)
-            if @table
-                nocolor = gopts.include?(:nocolor)
-
-                if inverted = gopts.include?(:inverse)
-                    # there's no point in coloring matches we are removing
-                    nocolor = true
-                end
-
-                if gopts.include?(:fixed)
-                    regexp = Regexp.new(/#{Regexp.escape(pattern.to_str)}/)
-                elsif Regexp === pattern
-                    regexp = pattern
-                else
-                    regexp = Regexp.new(/#{pattern.to_str}/)
-                end
-
-                rval = inverted
-
-                @table.delete_if do |row|
-                    matched = false
-                    row.each do |val|
-                        val = val.to_str unless String === val
-                        if nocolor
-                            if matched = !val.match(regexp).nil?
-                                rval = inverted ? false : true
-                                break
-                            end
-                        else
-                            # in the color case, we want to colorize all hits in
-                            # all columns, so we can't early terminate our
-                            # search
-                            if val.gsub!(regexp){|m| "\e[31;1m#{m}\e[0m"}
-                                matched = true
-                                rval = inverted ? false : true
-                            end
-                        end
+                    if opts == :row_hash
+                        hash = {}
+                        @fields.each_with_index{|f,i| hash[f.name] = row[i]}
+                        yield(hash)
+                    else
+                        yield(row)
                     end
-                    inverted ? matched : !matched
                 end
-
-                return rval
-            else
-                return false
             end
+            self
         end
 
         # Show a set of results in a decent fashion.

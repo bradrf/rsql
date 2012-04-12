@@ -149,73 +149,19 @@ class TestMySQLResults < Test::Unit::TestCase
                      dout.string.gsub(/\s+/,''))
     end
 
-    def test_grep
-        f1 = mock('f1')
-        f1.stubs(:name).returns('c1')
-        f1.stubs(:type).returns(1)
-        f1.stubs(:is_num?).returns(false)
-        f1.stubs(:longest_length)
+    def test_row_access
+        mres = MySQLResults.new(['col1', 'col2'], [[1,2], [3,4]])
+        assert_equal(3, mres[1,0])
+        assert_equal(4, mres[1,'col2'])
+        assert_equal({'col1'=>3,'col2'=>4}, mres[1])
+    end
 
-        f2 = mock('f2')
-        f2.stubs(:name).returns('c2')
-        f2.stubs(:type).returns(1)
-        f2.stubs(:is_num?).returns(false)
-        f2.stubs(:longest_length)
-
-        res = mock('results')
-        res.stubs(:num_rows).returns(2)
-        res.stubs(:fetch_fields).returns([f1,f2])
-
-        rows = sequence(:rows)
-        res.expects(:fetch_row).in_sequence(rows).returns(['v1.1','v1.2'])
-        res.expects(:fetch_row).in_sequence(rows).returns(['v2.1','v2.2'])
-        res.expects(:fetch_row).in_sequence(rows).returns(nil)
-
-        conn = mock('Mysql')
-        conn.expects(:reconnect=)
-        conn.stubs(:list_dbs).returns([])
-        conn.stubs(:query).with(instance_of(String)).returns(res)
-        conn.stubs(:affected_rows).returns(1)
-        conn.expects(:reconnected?).times(4)
-        MySQLResults.reset_history
-        MySQLResults.conn = conn
-
-        mres = MySQLResults.query('ignored1', eval_context=nil, raw=true)
-        assert_equal(false, mres.grep(/val/))
-
-        rows = sequence(:rows)
-        res.expects(:fetch_row).in_sequence(rows).returns(['v1.1','v1.2'])
-        res.expects(:fetch_row).in_sequence(rows).returns(['v2.1','v2.2'])
-        res.expects(:fetch_row).in_sequence(rows).returns(nil)
-
-        mres = MySQLResults.query('ignored2', eval_context=nil, raw=true)
-        assert_equal(true, mres.grep('v1', :fixed))
-        assert_equal("\e[31;1mv1\e[0m.1", mres[0]['c1'])
-        assert_equal("\e[31;1mv1\e[0m.2", mres[0]['c2'])
-
-        rows = sequence(:rows)
-        res.expects(:fetch_row).in_sequence(rows).returns(['v1.1','v1.2'])
-        res.expects(:fetch_row).in_sequence(rows).returns(['v2.1','v2.2'])
-        res.expects(:fetch_row).in_sequence(rows).returns(nil)
-
-        mres = MySQLResults.query('ignored3', eval_context=nil, raw=true)
-        assert_equal(false, mres.grep('v', :fixed, :inverse))
-
-        rows = sequence(:rows)
-        res.expects(:fetch_row).in_sequence(rows).returns(['v1.1','v1.2'])
-        res.expects(:fetch_row).in_sequence(rows).returns(['v2.1','v2.2'])
-        res.expects(:fetch_row).in_sequence(rows).returns(nil)
-
-        mres = MySQLResults.query('ignored4', eval_context=nil, raw=true)
-        assert_equal(true, mres.grep('v1.1', :nocolor))
-        assert_equal("v1.1", mres[0]['c1'])
-
-        # fixme: technically should be in it's only test...
-        cmds = []
-        4.times{|i| cmds << "ignored#{i+1}"}
-        assert_equal(cmds, MySQLResults.history)
-        assert_equal([cmds.last], MySQLResults.history(1))
-        assert_equal(cmds, MySQLResults.history(15))
+    def test_delete
+        mres = MySQLResults.new(['col1', 'col2'], [[1,2], [3,4]])
+        mres.delete_if{|r| r[1] == 4}
+        assert_equal(nil, mres[1])
+        mres.delete_if(:row_hash){|r| r['col1'] == 1}
+        assert_equal(nil, mres[0])
     end
 
 end # class TestMySQLResults

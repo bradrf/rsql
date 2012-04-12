@@ -63,11 +63,13 @@ ARGV.map!{|a| a.sub(/^--/,'-')}
 if i = ARGV.index('-rc')
     ARGV.delete_at(i)
     rc_fn = ARGV.delete_at(i)
-else
+elsif ENV['HOME']
     rc_fn = File.join(ENV['HOME'], ".#{bn}rc")
 end
 
-eval_context.load(rc_fn, :skip_init_registrations) if File.exists?(rc_fn)
+if rc_fn && File.exists?(rc_fn)
+    eval_context.load(rc_fn, :skip_init_registrations)
+end
 
 def get_password(prompt)
     STDOUT.print(prompt)
@@ -160,10 +162,14 @@ if i = ARGV.index('-ssh')
     (opts.ssh_host, opts.ssh_user, opts.ssh_password, opts.ssh_port) =
         split_login(ARGV.delete_at(i))
 
-    default_config = File.join(ENV['HOME'], '.ssh', 'config')
-    if File.exists?(default_config)
-        opts.ssh_config = default_config
-        opts.ssh_cfghash = Net::SSH::Config.load(default_config, opts.ssh_host)
+    opts.ssh_cfghash = {}
+
+    if ENV['HOME']
+        default_config = File.join(ENV['HOME'], '.ssh', 'config')
+        if File.exists?(default_config)
+            opts.ssh_config = default_config
+            opts.ssh_cfghash = Net::SSH::Config.load(default_config, opts.ssh_host)
+        end
     end
 
     if opts.ssh_user.nil? || opts.ssh_user.empty?
@@ -237,7 +243,7 @@ MySQLResults.database_name = ARGV.shift
 
 if !$stdin.tty? && opts.batch_input.nil?
     # accept commands from stdin
-    opts.batch_input = $stdin.read.gsub(/\r?\n/,';')
+    opts.batch_input = $stdin.read
 end
 
 # make sure we remove any duplicates when we add to the history to
@@ -381,7 +387,8 @@ if opts.ssh_host
     ipc_state = ''
     15.times do
         sleep(1)
-        ipc_state = IO.read(ipc_fn).strip
+        # if the fork fails, it'll call our at_exit which removes the ipc file
+        ipc_state = File.exists?(ipc_fn) ? IO.read(ipc_fn).strip : 'fail'
         break if ipc_state == 'ready' || ipc_state == 'fail'
     end
 
@@ -428,9 +435,11 @@ rescue Exception => ex
     exit 1
 end
 
-history_fn = File.join(ENV['HOME'], ".#{bn}_history")
-if File.exists?(history_fn) && 0 < File.size(history_fn)
-    YAML.load_file(history_fn).each {|i| Readline::HISTORY.push(i)}
+if ENV['HOME']
+    history_fn = File.join(ENV['HOME'], ".#{bn}_history")
+    if File.exists?(history_fn) && 0 < File.size(history_fn)
+        YAML.load_file(history_fn).each {|i| Readline::HISTORY.push(i)}
+    end
 end
 
 Readline.completion_proc = eval_context.method(:complete)
@@ -515,6 +524,7 @@ end
 
 child_pids << kill_pid
 opts.delete_field(:mysql_password)
+# fixme: consider emulating a shell prompt and have this cancel any current cmd line
 Signal.trap('INT', nil)
 
 Signal.trap('CHLD') do
@@ -544,7 +554,7 @@ end
 
 sleep(0.3)
 
-if Readline::HISTORY.any?
+if Readline::HISTORY.any? && history_fn
     if 100 < Readline::HISTORY.size
         (Readline::HISTORY.size - 100).times do |i|
             Readline::HISTORY.delete_at(i)
